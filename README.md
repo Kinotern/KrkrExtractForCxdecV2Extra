@@ -180,6 +180,7 @@
 
 ## 相关文档
 
+<<<<<<< HEAD
 - [XP3 纯哈希解包技术分析](docs/xp3-pure-hash-analysis.md)
 
 ## 常见问题
@@ -199,3 +200,10 @@
 ### 兼容 Win7 以外的系统吗
 
 理论上兼容更高版本 Windows，但主要以当前工程配置和 x86 目标为准。
+=======
+ * [GARBro](https://github.com/crskycode/GARbro)&emsp; 类型: 静态(需人工装填且十分麻烦) &emsp; 解包: 一次性 &emsp;文件名: 无
+
+ * [GARBro2](https://github.com/UserUnknownFactor/GARbro2)&emsp; 类型: 静态(需人工装填且较为简单) &emsp; 解包: 一次性 &emsp;文件名: 无
+ * 需搭配https://github.com/YuriSizuku/GalgameReverse/blob/master/project/krkr/src/krkr_hxv4_dumpkey.js
+
+>>>>>>> 501248e7889a8dfd17c3983b56151ce841366241

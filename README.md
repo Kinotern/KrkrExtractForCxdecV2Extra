@@ -51,11 +51,7 @@
 
 &emsp;&emsp;Q: 解包对话框支持批量拖拽解包吗
 
-&emsp;&emsp;A: 不支持, 仅支持单个封包逐个拖拽提取
-
-&emsp;&emsp;Q: 解包响应框解包时候无响应
-
-&emsp;&emsp;A: 没做多线程支持, 等它慢慢解完就好
+&emsp;&emsp;A: 支持, 但是无法同时并发解包，相较原版提升了GUI功能，无需因为解包时间过长忘记拖拽下一个xp3，自动化根据列表解包
 
 &emsp;&emsp;Q: Hash映射表能一次性提取所有吗
 
@@ -71,4 +67,4 @@
 
  * [KrkrDump](https://github.com/crskycode/KrkrDump)&emsp; 类型: 动态 &emsp; 解包: 运行时 &emsp;文件名: 运行时
 
- * [GARBro](https://github.com/crskycode/GARbro)&emsp; 类型: 静态(需人工装填) &emsp; 解包: 一次性 &emsp;文件名: 无
+ * [GARBro](https://github.com/crskycode/GARbro)&emsp; 类型: 静态(需人工装填且十分麻烦) &emsp; 解包: 一次性 &emsp;文件名: 无

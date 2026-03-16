@@ -1,122 +1,66 @@
-﻿#include <Windows.h>
-#include "resource.h"
-
+#include <Windows.h>
 #include <Shlwapi.h>
-#pragma comment(lib,"shlwapi.lib")
 
-/// <summary>
-/// 最大路径
-/// </summary>
-constexpr size_t MaxPath = 1024u;
+#include "BatchExtractorUI.h"
 
-typedef void (WINAPI* tExtractFunc)(const wchar_t* packageName);
-static tExtractFunc g_ExtractPackage = nullptr;
+#pragma comment(lib, "shlwapi.lib")
 
-/// <summary>
-/// 主窗体消息循环
-/// </summary>
-/// <param name="hwnd">窗口句柄</param>
-/// <param name="msg">消息</param>
-/// <param name="wParam"></param>
-/// <param name="lParam"></param>
-INT_PTR CALLBACK ExtractorDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
+namespace
 {
-    switch (msg)
-    {
-        case WM_DROPFILES:
-        {
-            HDROP hDrop = (HDROP)wParam;
-            wchar_t fullName[MaxPath];
-            //只获取第一项
-            if (UINT strLen = ::DragQueryFileW(hDrop, 0u, fullName, MaxPath))
-            {
-                DWORD attr = ::GetFileAttributesW(fullName);
-                if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_ARCHIVE) == FILE_ATTRIBUTE_ARCHIVE)
-                {
-                    const wchar_t* fileName = ::PathFindFileNameW(fullName);
-                    g_ExtractPackage(fileName);
-                }
-                ::DragFinish(hDrop);
-            }
-            return TRUE;
-        }
-        case WM_CLOSE:
-        {
-            ::DestroyWindow(hwnd);
-            return TRUE;
-        }
-        case WM_DESTROY:
-        {
-            ::PostQuitMessage(0);
-            return TRUE;
-        }
-    }
-    return FALSE;
-}
-
-
-/// <summary>
-/// 窗口代码
-/// </summary>
-/// <param name="hInstance">模块基地址</param>
-DWORD WINAPI WinExtractorEntry(LPVOID hInstance) 
-{
-    HWND hwnd = ::CreateDialogParamW((HINSTANCE)hInstance, MAKEINTRESOURCEW(IDD_MainForm), NULL, ExtractorDialogWindProc, 0u);
-    ::ShowWindow(hwnd, SW_NORMAL);
-
-    MSG msg{ };
-    while (BOOL ret = ::GetMessageW(&msg, NULL, 0u, 0u))
-    {
-        if (ret == -1) 
-        {
-            return -1;
-        }
-        else
-        {
-            ::TranslateMessage(&msg);
-            ::DispatchMessageW(&msg);
-        }
-    }
-    return 0u;
+    constexpr size_t MaxPath = 1024u;
+    UI::StartupContext g_Startup{};
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
     UNREFERENCED_PARAMETER(lpReserved);
+
     switch (ul_reason_for_call)
     {
         case DLL_PROCESS_ATTACH:
         {
             constexpr const wchar_t CoreDllNameW[] = L"CxdecExtractor.dll";
 
-            wchar_t moduleFullPath[MaxPath];
-            DWORD strLen = ::GetModuleFileNameW(hModule, moduleFullPath, MaxPath);
+            wchar_t moduleFullPath[MaxPath]{};
+            ::GetModuleFileNameW(hModule, moduleFullPath, MaxPath);
             wchar_t* dllName = ::PathFindFileNameW(moduleFullPath);
             memcpy(dllName, CoreDllNameW, sizeof(CoreDllNameW));
 
-            if (HMODULE coreBase = ::LoadLibraryW(moduleFullPath))
+            HMODULE coreBase = ::LoadLibraryW(moduleFullPath);
+            if (!coreBase)
             {
-                g_ExtractPackage = (tExtractFunc)::GetProcAddress(coreBase, "ExtractPackage");
-                if (HANDLE hThread = ::CreateThread(NULL, 0u, WinExtractorEntry, hModule, 0u, NULL))
-                {
-                    ::CloseHandle(hThread);
-                }
+                ::MessageBoxW(nullptr, L"CxdecExtractor.dll 加载失败", L"错误", MB_OK);
+                break;
             }
-            else
+
+            g_Startup.ModuleInstance = hModule;
+            g_Startup.Api.Module = coreBase;
+            g_Startup.Api.ExtractPackageEx = (tExtractPackageExProc)::GetProcAddress(coreBase, "ExtractPackageEx");
+            g_Startup.Api.SetExtractProgressCallback = (tSetExtractProgressCallbackProc)::GetProcAddress(coreBase, "SetExtractProgressCallback");
+
+            if (!g_Startup.Api.ExtractPackageEx || !g_Startup.Api.SetExtractProgressCallback)
             {
-                ::MessageBoxW(nullptr, L"CxdecExtractor.dll加载失败", L"错误", MB_OK);
+                ::MessageBoxW(nullptr, L"CxdecExtractor.dll 缺少批量解包接口", L"错误", MB_OK);
+                break;
+            }
+
+            HANDLE thread = ::CreateThread(nullptr, 0u, UI::RunBatchExtractorUi, &g_Startup, 0u, nullptr);
+            if (thread)
+            {
+                ::CloseHandle(thread);
             }
             break;
         }
         case DLL_THREAD_ATTACH:
-        case DLL_THREAD_DETACH: 
+        case DLL_THREAD_DETACH:
             break;
         case DLL_PROCESS_DETACH:
-        {
             break;
-        }
     }
     return TRUE;
 }
 
-extern "C" __declspec(dllexport) void Dummy(){}
+extern "C" __declspec(dllexport) void Dummy()
+{
+}
+

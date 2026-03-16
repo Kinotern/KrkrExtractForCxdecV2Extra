@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <Windows.h>
 #include <cstdio>
 
 namespace Log
@@ -30,5 +31,6 @@ namespace Log
 
 	private:
 		FILE* m_pOutput;
+		CRITICAL_SECTION m_Lock;
 	};
 }

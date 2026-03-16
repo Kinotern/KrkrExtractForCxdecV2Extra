@@ -5,6 +5,7 @@
 #include <vector>
 #include "tp_stub.h"
 #include "log.h"
+#include "ExtractApi.h"
 
 namespace Engine
 {
@@ -92,8 +93,10 @@ namespace Engine
 		tCreateStream mCreateStreamFunc;		//CxCreateStream打开文件流接口
 		tCreateIndex mCreateIndexFunc;			//CxCreateIndex获取文件表接口
 
-		std::wstring mExtractDirectoryPath;		//解包输出文件夹
+		std::wstring mExtractDirectoryPath;		//默认解包输出文件夹
         Log::Logger mLogger;                    //解包日志
+        tExtractProgressCallback mProgressCallback; //进度回调
+        void* mProgressContext;                //进度回调上下文
 
 	public:
 		ExtractCore();
@@ -115,6 +118,13 @@ namespace Engine
         /// <param name="directory">文件夹绝对路径</param>
         void SetLoggerDirectory(const std::wstring& directory);
 
+        /// <summary>
+        /// 设置进度回调
+        /// </summary>
+        /// <param name="callback">回调函数</param>
+        /// <param name="context">回调上下文</param>
+        void SetProgressCallback(tExtractProgressCallback callback, void* context);
+
 		/// <summary>
 		/// 初始化 (特征码找接口)
 		/// </summary>
@@ -127,10 +137,17 @@ namespace Engine
 		/// <returns>True已初始化 False未初始化</returns>
 		bool IsInitialized();
 		/// <summary>
-		/// 解包
+		/// 使用默认输出目录解包
 		/// </summary>
 		/// <param name="packageFileName">封包名称</param>
-		void ExtractPackage(const std::wstring& packageFileName);
+		bool ExtractPackage(const std::wstring& packageFileName, unsigned int taskId = 0u);
+        /// <summary>
+        /// 使用指定输出目录解包
+        /// </summary>
+        /// <param name="packagePath">封包路径</param>
+        /// <param name="outputDirectory">输出目录</param>
+        /// <param name="taskId">任务编号</param>
+        bool ExtractPackageTo(const std::wstring& packagePath, const std::wstring& outputDirectory, unsigned int taskId);
 
 	private:
 		/// <summary>
@@ -146,14 +163,16 @@ namespace Engine
         /// <param name="entry">文件表</param>
         /// <param name="packageName">封包名</param>
         /// <returns>IStream对象</returns>
-        IStream* CreateStream(const FileEntry& entry, const std::wstring& packageName);
+        IStream* CreateStream(const FileEntry& entry, const tTJSString& packageStoragePath);
 
         /// <summary>
         /// 提取文件
         /// </summary>
         /// <param name="stream">流</param>
         /// <param name="extractPath">提取路径</param>
-        void ExtractFile(IStream* stream, const std::wstring& extractPath);
+        /// <param name="relativePath">相对路径</param>
+        /// <returns>True提取成功 False失败</returns>
+        bool ExtractFile(IStream* stream, const std::wstring& extractPath, const std::wstring& relativePath);
 
         /// <summary>
         /// 尝试解密文本
@@ -162,7 +181,28 @@ namespace Engine
         /// <param name="output">输出缓冲区</param>
         /// <returns>True解密成功 False不是文本加密</returns>
         static bool TryDecryptText(IStream* stream, std::vector<uint8_t>& output);
+
+        /// <summary>
+        /// 解析封包为标准TVP存储路径
+        /// </summary>
+        /// <param name="packagePath">封包路径</param>
+        /// <returns>标准存储路径</returns>
+        static tTJSString ResolvePackageStoragePath(const std::wstring& packagePath);
+
+        /// <summary>
+        /// 写日志
+        /// </summary>
+        /// <param name="format">格式</param>
+        void WriteLog(const wchar_t* format, ...);
+
+        /// <summary>
+        /// 通知进度
+        /// </summary>
+        void NotifyProgress(unsigned int taskId,
+                            const std::wstring& packagePath,
+                            unsigned int state,
+                            unsigned int current,
+                            unsigned int total,
+                            const std::wstring& detail) const;
 	};
 }
-
-

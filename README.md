@@ -68,3 +68,7 @@
  * [KrkrDump](https://github.com/crskycode/KrkrDump)&emsp; 类型: 动态 &emsp; 解包: 运行时 &emsp;文件名: 运行时
 
  * [GARBro](https://github.com/crskycode/GARbro)&emsp; 类型: 静态(需人工装填且十分麻烦) &emsp; 解包: 一次性 &emsp;文件名: 无
+
+ * [GARBro2](https://github.com/UserUnknownFactor/GARbro2)&emsp; 类型: 静态(需人工装填且较为简单) &emsp; 解包: 一次性 &emsp;文件名: 无
+ * 需搭配https://github.com/YuriSizuku/GalgameReverse/blob/master/project/krkr/src/krkr_hxv4_dumpkey.js
+

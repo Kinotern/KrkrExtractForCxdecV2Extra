@@ -11,6 +11,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CxdecExtractorUI", "CxdecEx
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CxdecStringDumper", "CxdecStringDumper\CxdecStringDumper.vcxproj", "{3ADCCE05-606F-4818-833D-E0E78230E8B0}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CxdecKeyDumper", "CxdecKeyDumper\CxdecKeyDumper.vcxproj", "{6F5D2319-6B1D-4B24-85C1-2A8B59590AC1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86
@@ -33,6 +35,10 @@ Global
 		{3ADCCE05-606F-4818-833D-E0E78230E8B0}.Debug|x86.Build.0 = Debug|Win32
 		{3ADCCE05-606F-4818-833D-E0E78230E8B0}.Release|x86.ActiveCfg = Release|Win32
 		{3ADCCE05-606F-4818-833D-E0E78230E8B0}.Release|x86.Build.0 = Release|Win32
+		{6F5D2319-6B1D-4B24-85C1-2A8B59590AC1}.Debug|x86.ActiveCfg = Debug|Win32
+		{6F5D2319-6B1D-4B24-85C1-2A8B59590AC1}.Debug|x86.Build.0 = Debug|Win32
+		{6F5D2319-6B1D-4B24-85C1-2A8B59590AC1}.Release|x86.ActiveCfg = Release|Win32
+		{6F5D2319-6B1D-4B24-85C1-2A8B59590AC1}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

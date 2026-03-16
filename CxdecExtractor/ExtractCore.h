@@ -10,7 +10,8 @@
 namespace Engine
 {
     /// <summary>
-    /// 文件表
+    /// Hxv4 索引中的单个文件条目。
+    /// 这里保留的是哈希路径和序号信息，真实文件名并不在纯哈希封包中。
     /// </summary>
     class FileEntry
     {
@@ -49,7 +50,8 @@ namespace Engine
         }
 
         /// <summary>
-        /// 获取封包的名字
+        /// 将 ordinal 的低位编码成 TVP 可接受的伪文件名。
+        /// 封包内部是按 ordinal 取流，因此这里不需要真实文件名。
         /// <para>最多8字节 4个字符 3个Unicode字符 + 0结束符</para>
         /// </summary>
         /// <param name="retValue">字符返回值指针</param>
@@ -83,6 +85,7 @@ namespace Engine
         static constexpr const wchar_t ExtractorLogFileName[] = L"Extractor.log";        //提取器日志文件名
 
 	private:
+        // 运行时通过签名扫描宿主插件，定位实际负责建索引和开流的内部函数。
 		static constexpr const char CreateStreamSignature[] = "\x55\x8B\xEC\x6A\xFF\x68\x2A\x2A\x2A\x2A\x64\xA1\x00\x00\x00\x00\x50\x51\xA1\x2A\x2A\x2A\x2A\x33\xC5\x50\x8D\x45\xF4\x64\xA3\x00\x00\x00\x00\xA1\x2A\x2A\x2A\x2A\x85\xC0\x75\x32\x68\xB0\x30\x00\x00";
         static constexpr const char CreateIndexSignature[] = "\x55\x8B\xEC\x6A\xFF\x68\x2A\x2A\x2A\x2A\x64\xA1\x00\x00\x00\x00\x50\x83\xEC\x14\x57\xA1\x2A\x2A\x2A\x2A\x33\xC5\x50\x8D\x45\xF4\x64\xA3\x00\x00\x00\x00\x83\x7D\x08\x00\x0F\x84\x2A\x2A\x00\x00\xA1\x2A\x2A\x2A\x2A\x85\xC0\x75\x12\x68\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x83\xC4\x04\xA3\x2A\x2A\x2A\x2A\xFF\x75\x0C\x8D\x4D\xF0\x51\xFF\xD0\xA1\x2A\x2A\x2A\x2A\xC7\x45\xFC\x00\x00\x00\x00\x85\xC0";
         static constexpr const wchar_t Split[] = L"##YSig##";           //格式分割字符串

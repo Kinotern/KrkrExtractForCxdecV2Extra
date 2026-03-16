@@ -6,11 +6,12 @@
 namespace Engine
 {
     /// <summary>
-    /// 单实例
+    /// DLL 生命周期内的唯一应用对象，统一持有解包器和 TVP 初始化状态。
     /// </summary>
     static Application* g_Instance = nullptr;
 
-    //Hook插件功能
+    // V2Link 是 Krkr/TVP 插件的初始化入口。这里先执行原函数，再补做我们的初始化，
+    // 可以确保 tp_stub 依赖的导出表已经准备好。
     tTVPV2LinkProc g_V2Link = nullptr;
     HRESULT __stdcall HookV2Link(iTVPFunctionExporter* exporter)
     {
@@ -24,7 +25,8 @@ namespace Engine
         return result;
     }
 
-    //Hook插件加载
+    // 注入后的 DLL 起点很早，此时还拿不到 TVP 导出表。
+    // 先拦截 GetProcAddress，等宿主真正解析到 V2Link 时再完成初始化。
     auto g_GetProcAddressFunction = ::GetProcAddress;
     FARPROC WINAPI HookGetProcAddress(HMODULE hModule, LPCSTR lpProcName)
     {
@@ -36,19 +38,16 @@ namespace Engine
             {
                 if (strcmp(lpProcName, "V2Link") == 0)
                 {
-                    //Nt头偏移
+                    // V2Link 所在模块就是目标插件，后续特征码也只在其首个代码节里查找。
                     PIMAGE_NT_HEADERS ntHeader = PIMAGE_NT_HEADERS((ULONG_PTR)hModule + ((PIMAGE_DOS_HEADER)hModule)->e_lfanew);
-                    //可选头大小
                     DWORD optionalHeaderSize = ntHeader->FileHeader.SizeOfOptionalHeader;
-                    //第一个节表(代码段)
                     PIMAGE_SECTION_HEADER codeSectionHeader = (PIMAGE_SECTION_HEADER)((ULONG_PTR)ntHeader + sizeof(ntHeader->Signature) + sizeof(IMAGE_FILE_HEADER) + optionalHeaderSize);
 
-                    DWORD codeStartRva = codeSectionHeader->VirtualAddress;  //代码段起始RVA
-                    DWORD codeSize = codeSectionHeader->SizeOfRawData;		//代码段大小
+                    DWORD codeStartRva = codeSectionHeader->VirtualAddress;
+                    DWORD codeSize = codeSectionHeader->SizeOfRawData;
+                    ULONG_PTR codeStartVa = (ULONG_PTR)hModule + codeStartRva;
 
-                    ULONG_PTR codeStartVa = (ULONG_PTR)hModule + codeStartRva;      //代码段起始VA
-
-                    //初始化
+                    // 先补齐 TVP 导出绑定，再扫描解包所需的内部接口。
                     Application* app = Application::GetInstance();
                     if (!app->IsTVPEngineInitialize())
                     {
@@ -63,7 +62,7 @@ namespace Engine
                         extractor->Initialize((PVOID)codeStartVa, codeSize);
                     }
 
-                    //初始化完毕 解除Hook
+                    // 两套入口都拿到后就不再拦截 GetProcAddress，避免继续影响宿主行为。
                     if (extractor->IsInitialized())
                     {
                         HookUtils::InlineHook::UnHook(g_GetProcAddressFunction, HookGetProcAddress);
@@ -82,7 +81,7 @@ namespace Engine
         this->mTVPExporterInitialized = false;
         this->mExtractor = new ExtractCore();
 
-        //设置解包输出路径
+        // 默认输出放到游戏目录，方便直接随游戏部署和查找结果。
         this->mExtractor->SetOutputDirectory(this->mCurrentDirectoryPath);
     }
 
@@ -99,7 +98,7 @@ namespace Engine
     {
         this->mModuleDirectoryPath = Path::GetDirectoryName(Util::GetModulePathW(hModule));
 
-        //设置解包Log输出路径
+        // 日志跟随注入 DLL 输出，避免游戏切换工作目录时找不到日志。
         this->mExtractor->SetLoggerDirectory(this->mModuleDirectoryPath);
     }
 
@@ -131,7 +130,7 @@ namespace Engine
         g_Instance = new Application();
         g_Instance->InitializeModule(hModule);
 
-        //Hook
+        // 初始化阶段唯一需要做的事情就是等待宿主解析 V2Link。
         HookUtils::InlineHook::Hook(g_GetProcAddressFunction, HookGetProcAddress);
     }
 
@@ -146,4 +145,3 @@ namespace Engine
 
     //================================//
 }
-

@@ -10,6 +10,8 @@
 
 namespace
 {
+    // TVP 同时支持绝对路径和相对 app path，这里先做一个轻量判断，
+    // 后续再统一交给 TVP 的标准化逻辑处理。
     bool IsAbsolutePath(const std::wstring& path)
     {
         if (path.length() >= 2 && path[1] == L':')
@@ -22,6 +24,8 @@ namespace
 
     bool IsKnownPlaceholderEntry(const Engine::FileEntry& entry)
     {
+        // 某些样本会带一个固定的占位条目，索引存在但无法真正打开。
+        // 这里按哈希白名单跳过，避免把已知空洞算成整体解包失败。
         static constexpr unsigned __int8 PlaceholderDirectoryHash[8] =
         {
             0x94, 0xD4, 0xA9, 0x7C, 0x61, 0x49, 0x86, 0x21
@@ -75,6 +79,7 @@ namespace Engine
 
 	void ExtractCore::Initialize(PVOID codeVa, DWORD codeSize)
 	{
+        // 直接复用宿主实现，避免自己重写 Hxv4 的索引和解密逻辑。
 		PVOID createStream = PE::SearchPattern(codeVa, codeSize, ExtractCore::CreateStreamSignature, sizeof(ExtractCore::CreateStreamSignature) - 1u);
 		PVOID createIndex = PE::SearchPattern(codeVa, codeSize, ExtractCore::CreateIndexSignature, sizeof(ExtractCore::CreateIndexSignature) - 1u);
 
@@ -97,6 +102,7 @@ namespace Engine
 
     bool ExtractCore::ExtractPackageTo(const std::wstring& packagePath, const std::wstring& outputDirectory, unsigned int taskId)
 	{
+        // 外部 UI 依赖状态回调驱动列表和总进度，因此整个流程会分阶段汇报状态。
         std::wstring packageDisplayName = Path::GetFileName(packagePath);
         if (packageDisplayName.empty())
         {
@@ -135,6 +141,7 @@ namespace Engine
         const std::wstring effectiveOutputDirectory = outputDirectory.empty() ? this->mExtractDirectoryPath : outputDirectory;
         Directory::Create(effectiveOutputDirectory);
 
+        // .alst 保存“目录哈希 / 文件哈希”映射，便于后续结合 hash 日志回填路径。
         std::wstring packageName = Path::GetFileNameWithoutExtension(packageDisplayName);
         std::wstring extractOutput = Path::Combine(effectiveOutputDirectory, packageName);
         std::wstring fileTableOutput = extractOutput + L".alst";
@@ -156,6 +163,7 @@ namespace Engine
         {
             FileEntry& entry = entries[index];
 
+            // 纯哈希封包没有明文路径，输出结构只能按 hash 目录还原。
             std::wstring dirHash = StringHelper::BytesToHexStringW(entry.DirectoryPathHash, sizeof(entry.DirectoryPathHash));
             std::wstring fileNameHash = StringHelper::BytesToHexStringW(entry.FileNameHash, sizeof(entry.FileNameHash));
             std::wstring relativePath = packageName + L"\\" + dirHash + L"\\" + fileNameHash;
@@ -166,6 +174,7 @@ namespace Engine
             bool currentSucceeded = false;
             if (IStream* stream = this->CreateStream(entry, tjsXp3PackagePath))
             {
+                // 当前 .alst 仍然输出 hash->hash 形式，后续如有映射表可离线替换。
                 fileTable.WriteUnicode(L"%s%s%s%s%s%s%s\r\n",
                                        dirHash.c_str(),
                                        ExtractCore::Split,
@@ -247,6 +256,7 @@ namespace Engine
 		dirEntriesObj.PropGet(TJS_MEMBERMUSTEXIST, L"count", NULL, &tjsCount, nullptr);
 		count = (tjs_int)tjsCount.AsInteger();
 
+		// Hxv4 返回的是“目录 hash / 子项对象”交替排列的数组。
 		constexpr tjs_int DirectoryItemSize = 2;
 		tjs_int dirCount = count / DirectoryItemSize;
 
@@ -269,6 +279,7 @@ namespace Engine
 			fileEntries.PropGet(TJS_MEMBERMUSTEXIST, L"count", NULL, &tjsCount, nullptr);
 			count = (tjs_int)tjsCount.AsInteger();
 
+			// 子项对象内部同样是“文件 hash / 文件信息”成对排列。
 			constexpr tjs_int FileItemSize = 2;
 			tjs_int fileCount = count / FileItemSize;
 
@@ -321,6 +332,8 @@ namespace Engine
 		tjs_char fakeName[4]{ };
 		entry.GetFakeName(fakeName);
 
+        // TVP 存储路径格式为 "archive.xp3>entryName"。
+        // 这里的 entryName 不是明文文件名，而是由 ordinal 推导出的伪名。
 		tTJSString tjsArcPath = packageStoragePath;
 		tjsArcPath += L">";
 		tjsArcPath += fakeName;
@@ -347,6 +360,7 @@ namespace Engine
 		std::vector<uint8_t> buffer;
 		bool success = false;
 
+        // 先尝试走 krkr 的文本资源解密分支；失败时再原样导出字节流。
 		if (ExtractCore::TryDecryptText(stream, buffer))
 		{
 			success = true;
@@ -389,6 +403,8 @@ namespace Engine
 
 		if (mark[0] == 0xfe && mark[1] == 0xfe)
 		{
+            // Krkr 文本流头: FE FE + mode + FF FE
+            // mode 0/1 为逐字符变换，mode 2 为 zlib 压缩后的 UTF-16 文本。
 			uint8_t mode;
 			StreamUtils::IStreamEx::Read(stream, &mode, 1ul);
 
@@ -429,6 +445,7 @@ namespace Engine
 				buffer[0] = mark[0];
 				buffer[1] = mark[1];
 
+                // 保留 UTF-16LE BOM，输出文件能被常见编辑器直接识别。
 				uint8_t* dest = buffer.data() + 2;
 				unsigned long destLen = (unsigned long)uncompressed;
 
@@ -463,6 +480,7 @@ namespace Engine
 
 			if (mode == 0)
 			{
+                // mode 0: 高位和最低位共同参与异或，还原可读 UTF-16 字符。
 				for (size_t i = 0; i < count; i++)
 				{
 					wchar_t ch = buffer[i];
@@ -474,6 +492,7 @@ namespace Engine
 			}
 			else if (mode == 1)
 			{
+                // mode 1: 交换奇偶位。
 				for (size_t i = 0; i < count; i++)
 				{
 					wchar_t ch = buffer[i];
@@ -501,11 +520,13 @@ namespace Engine
 
         if (!IsAbsolutePath(packagePath))
         {
+            // 拖入相对路径时，按 TVP 的 app path 语义拼接，保持和宿主行为一致。
             tTJSString relativePath = TVPGetAppPath();
             relativePath += packagePath.c_str();
             return TVPNormalizeStorageName(relativePath);
         }
 
+        // 绝对路径统一做一次规范化，避免分隔符或大小写导致 TVP 找不到封包。
         std::wstring fullPath = Path::GetFullPath(packagePath);
         if (fullPath.empty())
         {

@@ -33,6 +33,8 @@ namespace
 {
     void SetLoaderWindowHandleEnv(HWND hwnd)
     {
+        // KeyDumper 运行在目标进程里，不能直接持有 loader HWND。
+        // 这里通过环境变量传句柄，方便跨进程回发进度消息。
         std::wstring value = std::to_wstring((unsigned long long)(ULONG_PTR)hwnd);
         ::SetEnvironmentVariableW(LoaderIpc::LoaderWindowHandleEnvName, value.c_str());
     }
@@ -96,6 +98,7 @@ INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 {
     if (msg == LoaderIpc::ProgressMessage())
     {
+        // KeyDumper 用 RegisterWindowMessage 回传百分比，loader 只负责显示。
         ShowKeyProgressControls(hwnd, true);
         UpdateKeyProgressUi(hwnd, (unsigned int)wParam, L"\x63D0\x53D6\x8FDB\x5EA6");
         return TRUE;
@@ -136,6 +139,7 @@ INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                     break;
                 case IDC_KeyDumper:
                     injectDllFileName = L"CxdecKeyDumper.dll";
+                    // Key 提取是异步分阶段完成的，loader 需要继续存活来展示进度。
                     shouldCloseLoaderAfterLaunch = false;
                     break;
             }
@@ -154,6 +158,7 @@ INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                     SetLoaderWindowHandleEnv(hwnd);
                 }
 
+                // 直接用 Detours 创建并注入，避免额外的远程线程/写内存步骤。
                 if (DetourCreateProcessWithDllW(g_KrkrExeFullPath.c_str(),
                                                 NULL,
                                                 NULL,
@@ -176,6 +181,7 @@ INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                     }
                     else
                     {
+                        // Key 模式下禁止重复点击，避免多个目标进程同时回报到同一个 loader。
                         ::EnableWindow(::GetDlgItem(hwnd, IDC_Extractor), FALSE);
                         ::EnableWindow(::GetDlgItem(hwnd, IDC_StringDumper), FALSE);
                         ::EnableWindow(::GetDlgItem(hwnd, IDC_KeyDumper), FALSE);
@@ -232,6 +238,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         LPWSTR* argv = ::CommandLineToArgvW(lpCmdLine, &argc);
         if (argc)
         {
+            // loader 通过“把游戏 exe 拖到自身上”启动，因此这里只关心第一个参数。
             krkrExeFullPath = std::wstring(argv[0]);
             krkrExeDirectory = Path::GetDirectoryName(krkrExeFullPath);
         }
@@ -248,6 +255,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         HWND hwnd = ::CreateDialogParamW((HINSTANCE)hInstance, MAKEINTRESOURCEW(IDD_MainForm), NULL, LoaderDialogWindProc, 0u);
         ::ShowWindow(hwnd, SW_NORMAL);
 
+        // 纯对话框程序，自己维护标准消息循环即可。
         MSG msg{};
         while (BOOL ret = ::GetMessageW(&msg, NULL, 0u, 0u))
         {

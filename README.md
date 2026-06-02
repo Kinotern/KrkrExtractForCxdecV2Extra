@@ -1,29 +1,41 @@
 # KrkrExtractV2 (For CxdecV2)
-本md与代码为GPT4.5Codex编写，完善与提升软件功能
-适用于 Wamsoft / KiriKiri Z Hxv4 2021.11+ 的动态工具集，提供以下功能：
 
-- XP3 解包
+本项目由 GPT-4.5 / Codex 辅助编写、整理和增强，面向 Wamsoft / KiriKiri Z Hxv4 2021.11+ / CxdecV2 系列加密游戏，提供一套动态分析与资源整理工具。
+
+主要功能：
+
+- XP3 动态解包
 - 运行时字符串 Hash 映射提取
-- 运行时 Key 提取
+- 运行时 Key 参数提取
+- 根据 `XP3 动态解包` 和 `运行时字符串 Hash 映射提取` 还原资源目录名、文件名和后缀。`实测成功率在90%以上`
 
 ## 环境
 
-- 系统：Windows 7 SP1 x64 及以上
+- 系统：Windows 7 SP1 x64 及以上，推荐 Windows 10 / Windows 11
 - IDE：Visual Studio 2022
-- 编译器：MSVC 2022 x86
+- 编译器：MSVC 2022
+- 平台：x86 / Win32
+- SDK：Windows 10 SDK 10.0.19041.0 或更新版本
 
 ## 模块说明
 
-- `CxdecExtractorLoader.exe`
-  负责启动游戏并注入对应模块。
-- `CxdecExtractor.dll`
-  解包核心，定位游戏内部接口并执行 XP3 提取。
-- `CxdecExtractorUI.dll`
-  XP3 批量解包界面。
-- `CxdecStringDumper.dll`
-  运行时字符串 Hash 映射提取模块。
-- `CxdecKeyDumper.dll`
-  运行时 Key 提取模块。
+- `CxdecExtractorLoader.exe`  
+  主加载器。负责启动目标游戏并注入对应模块，也内置资源文件名还原功能。
+
+- `CxdecExtractor.dll`  
+  解包核心。定位游戏内部 Cxdec 接口并执行 XP3 资源提取。
+
+- `CxdecExtractorUI.dll`  
+  XP3 批量解包界面。支持拖入多个 `*.xp3` 文件排队解包。
+
+- `CxdecStringDumper.dll`  
+  运行时字符串 Hash 映射提取模块。用于记录明文目录名、文件名和 Hash 的对应关系。
+
+- `CxdecKeyDumper.dll`  
+  运行时 Key 提取模块。用于导出 CxdecV2 / Hxv4 相关解密参数。
+
+- `ExtractorOutputRestorer`  
+  Loader 内置的资源文件名还原功能。读取 `Extractor_Output` 和 `StringHashDumper_Output`，生成 `Restored_Extractor_Output`。
 
 ## 当前功能
 
@@ -34,7 +46,7 @@
 - 提供列表状态、总进度、单文件进度、成功/失败反馈。
 - 支持自定义输出目录。
 - 支持完成弹窗和完成提示音。
-- 为了兼容宿主游戏运行时，当前采用“批量排队 + 单 worker 后台解包”模式，而不是单进程多线程并发解包。
+- 为了兼容宿主游戏运行时，当前采用“批量队列 + 单 worker 后台解包”模式，而不是单进程多线程并发解包。
 
 默认输出目录：
 
@@ -44,7 +56,7 @@
 
 输出内容包括：
 
-- 解包后的纯哈希目录结构
+- 解包后的 Hash 目录结构
 - 与封包同名的 `.alst` 文件表
 - `Extractor.log`
 - `ExtractorUI.log`
@@ -63,13 +75,25 @@
 - `FileNameHash.log`
 - `Universal.log`
 
+日志格式大致为：
+
+```text
+明文字符串##YSig##Hash
+```
+
+其中：
+
+- `DirectoryHash.log` 用于还原目录名。
+- `FileNameHash.log` 用于还原文件名和后缀。
+- `Universal.log` 记录 Hash Seed、Salt 等辅助信息。
+
 ### 3. Key 提取
 
 原生 C++ 版 Key 提取模块已经实现，不再依赖 Frida。
 
 运行方式：
 
-- 通过 `CxdecExtractorLoader.exe` 选择“加载Key提取模块”
+- 通过 `CxdecExtractorLoader.exe` 选择 `加载Key提取模块`
 - Loader 会显示提取进度条和百分比
 - 提取完成后弹出确认框
 - 点击确认后关闭 Loader 窗口
@@ -89,13 +113,17 @@
 
 输出文件：
 
-- `key_output.txt`
-  文本格式，尽量对齐 Frida 脚本输出风格
-- `KeyInfo.log`
-  详细日志
-- `KeyInfo.json`
-  结构化结果
-- `control_block.bin`
+- `key_output.txt`  
+  文本格式，尽量对齐 Frida 脚本输出风格。
+
+- `KeyInfo.log`  
+  详细日志。
+
+- `KeyInfo.json`  
+  结构化结果。
+
+- `control_block.bin`  
+  控制块数据。
 
 `key_output.txt` 当前会输出：
 
@@ -114,6 +142,51 @@
 - `* OddBranchOrder (garbro) : ...`
 - `* EvenBranchOrder (garbro) : ...`
 
+### 4. 资源文件名还原
+
+纯 Hash XP3 解包后，资源通常会以 Hash 目录和 Hash 文件名形式输出，例如：
+
+```text
+Extractor_Output\package_name\目录Hash\文件名Hash
+```
+
+如果已经通过字符串 Hash 提取模块获得：
+
+```text
+StringHashDumper_Output\DirectoryHash.log
+StringHashDumper_Output\FileNameHash.log
+```
+
+则可以在 Loader 中点击：
+
+```text
+还原资源文件名
+```
+
+工具会读取两边数据，并输出到：
+
+```text
+游戏目录\Restored_Extractor_Output\
+```
+
+还原完成后会弹出中文统计结果，包括：
+
+- 总文件数
+- 成功还原数
+- 成功率
+- 缺少目录 Hash 数
+- 缺少文件名 Hash 数
+- 复制失败数
+- 各个顶层目录的还原情况
+
+同时会生成详细报告：
+
+```text
+游戏目录\Restored_Extractor_Output\RestoreReport.txt
+```
+
+如果还原成功率不高，通常是 `FileNameHash.log` 收集不完整。可以重新运行 `加载字符串Hash提取模块`，并在游戏中尽量进入更多场景，例如标题菜单、设置、存档读档、剧情、CG、回想、鉴赏、章节选择等，让游戏加载更多资源名字符串。
+
 ## 使用方法
 
 ### 准备
@@ -128,82 +201,105 @@
 
 同时确保：
 
-- 目标游戏确实是 Wamsoft KrkrZ Hxv4 系列
-- 游戏的加密认证已经移除
+- 目标游戏确实是 Wamsoft / KiriKiri Z / Hxv4 / CxdecV2 系列
+- 游戏的加密认证已经移除或可以正常进入资源加载流程
 - 工具和游戏尽量不要放在受 UAC 严格保护的位置
 
 ### 解包 XP3
 
 1. 把游戏主程序拖到 `CxdecExtractorLoader.exe`
-2. 在 Loader 中点击“加载解包模块”
+2. 在 Loader 中点击 `加载解包模块`
 3. 在批量解包窗口中拖入一个或多个 `*.xp3`
 4. 等待后台队列解包完成
+5. 查看 `Extractor_Output`
 
 ### 提取字符串 Hash
 
 1. 把游戏主程序拖到 `CxdecExtractorLoader.exe`
-2. 点击“加载字符串Hash提取模块”
-3. 正常运行游戏，让目标逻辑触发
-4. 到 `StringHashDumper_Output` 查看结果
+2. 点击 `加载字符串Hash提取模块`
+3. 正常运行游戏，让目标逻辑和资源加载路径尽量多地触发
+4. 查看 `StringHashDumper_Output`
 
 ### 提取 Key
 
 1. 把游戏主程序拖到 `CxdecExtractorLoader.exe`
-2. 点击“加载Key提取模块”
+2. 点击 `加载Key提取模块`
 3. 等待 Loader 中的进度条走到 `100%`
 4. 确认完成提示
-5. 到 `ExtractKey_Output` 查看结果
+5. 查看 `ExtractKey_Output`
+
+### 还原资源文件名
+
+1. 先完成 XP3 解包，确保存在 `Extractor_Output`
+2. 再运行字符串 Hash 提取，确保存在 `StringHashDumper_Output`
+3. 把游戏主程序拖到 `CxdecExtractorLoader.exe`
+4. 点击 `还原资源文件名`
+5. 查看 `Restored_Extractor_Output`
+6. 查看 `Restored_Extractor_Output\RestoreReport.txt`
+
+## 构建方法
+
+推荐使用 Visual Studio 2022 的开发者命令行：
+
+```bat
+call "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=x86 -host_arch=x86
+msbuild KrkrZCxdecV2.sln /p:Configuration=Release /p:Platform=x86 /m
+```
+
+生成结果位于：
+
+```text
+Release\
+```
 
 ## 已知限制
 
 - XP3 批量解包是队列化串行执行，不支持单进程内并发解包。
-- 纯哈希封包本身不包含明文文件名，解包结果默认仍是纯哈希目录和文件名。
+- 纯 Hash 封包本身不包含明文文件名，解包结果默认仍是 Hash 目录和 Hash 文件名。
 - 字符串 Hash 提取无法保证一次性覆盖游戏内所有路径和文件名，是否能抓到取决于运行路径。
+- 资源文件名还原依赖 `DirectoryHash.log` 和 `FileNameHash.log` 的完整度。
+- 若复制失败，可能与路径过长、非法文件名、文件占用或权限有关。
 
-## 同类工具推荐
+## 同类工具参考
 
-- `KrkrExtractV2 (For CxdecV2)`（本工具）
-  类型：动态
-  说明：适合批量 XP3 解包、运行时字符串 Hash 提取、运行时 Key 提取。
-- [KrkrDump](https://github.com/crskycode/KrkrDump)
-  类型：动态
-  说明：偏运行时导出思路，适合某些需要游戏运行态配合的场景。
-- [GARbro](https://github.com/crskycode/GARbro)
-  类型：静态
-  说明：通用性强，但面对 Hxv4 / Cxdec 这类目标通常需要额外 key 和人工配置。
-- [GARbro2](https://github.com/UserUnknownFactor/GARbro2)
-  类型：静态
-  说明：同样适合配合 key 使用，配置上通常比 GARbro 更直接一些。
-- [krkr_hxv4_dumpkey.js](https://github.com/YuriSizuku/GalgameReverse/blob/master/project/krkr/src/krkr_hxv4_dumpkey.js)
-  类型：Frida 脚本
-  说明：适合做原始 key 抓取和结果对照；本项目现在已内置原生 Key 提取模块，但这个脚本仍然有参考价值，感谢大佬贡献。
+- [KrkrDump](https://github.com/crskycode/KrkrDump)  
+  动态导出思路，适合部分需要运行时配合的场景。
+
+- [GARbro](https://github.com/crskycode/GARbro)  
+  静态通用工具，面对 Hxv4 / Cxdec 目标时通常需要额外 key 和手工配置。
+
+- [GARbro2](https://github.com/UserUnknownFactor/GARbro2)  
+  静态工具，适合配合 key 使用，配置上通常比 GARbro 更直接一些。
+
+- [krkr_hxv4_dumpkey.js](https://github.com/YuriSizuku/GalgameReverse/blob/master/project/krkr/src/krkr_hxv4_dumpkey.js)  
+  Frida 脚本，适合做原始 key 抓取和结果对照。本项目已经内置原生 Key 提取模块，但该脚本仍有参考价值。
 
 ## 相关文档
 
-<<<<<<< HEAD
-- [XP3 纯哈希解包技术分析](docs/xp3-pure-hash-analysis.md)
+- [XP3 纯 Hash 解包技术分析](docs/xp3-pure-hash-analysis.md)
 
 ## 常见问题
 
-### 为什么解包结果没有明文文件名
+### 为什么解包结果没有明文文件名？
 
-因为纯哈希封包内部本来就没有明文文件名，当前工具只能还原出哈希目录结构和哈希文件名。
+因为纯 Hash 封包内部本身不保存明文文件名。解包模块只能从封包索引里拿到目录 Hash 和文件名 Hash。要还原明文名称，需要配合运行时字符串 Hash 提取模块。
 
-### 批量解包为什么不是多线程并发
+### 为什么还原后仍有文件缺失？
 
-因为底层依赖宿主游戏运行时接口，单进程并发调用容易导致宿主崩溃。当前采用的是稳定优先的后台队列方案。
+通常是因为运行时没有收集到对应文件名 Hash。可以重新加载字符串 Hash 提取模块，并在游戏中触发更多资源加载路径。
 
-### Key 提取为什么做成原生 DLL 而不是 Frida
+### 为什么批量解包不是多线程并发？
 
-为了避免额外依赖 Frida / Python / Node 运行环境，并且更方便直接集成进现有 Loader 工作流。
+底层依赖宿主游戏运行时接口，单进程并发调用容易导致宿主崩溃。当前方案优先保证稳定性。
 
-### 兼容 Win7 以外的系统吗
+### Key 提取为什么做成原生 DLL，而不是 Frida？
 
-理论上兼容更高版本 Windows，但主要以当前工程配置和 x86 目标为准。
-=======
- * [GARBro](https://github.com/crskycode/GARbro)&emsp; 类型: 静态(需人工装填且十分麻烦) &emsp; 解包: 一次性 &emsp;文件名: 无
+为了避免额外依赖 Frida / Python / Node 运行环境，也方便直接集成进现有 Loader 工作流。
 
- * [GARBro2](https://github.com/UserUnknownFactor/GARbro2)&emsp; 类型: 静态(需人工装填且较为简单) &emsp; 解包: 一次性 &emsp;文件名: 无
- * 需搭配https://github.com/YuriSizuku/GalgameReverse/blob/master/project/krkr/src/krkr_hxv4_dumpkey.js
+### 兼容 Win7 以外的系统吗？
 
->>>>>>> 501248e7889a8dfd17c3983b56151ce841366241
+理论上兼容更高版本 Windows。当前工程以 x86 目标和 Visual Studio 2022 配置为准。
+
+## 免责声明
+
+本项目仅用于学习、研究和个人合法备份场景。请勿用于侵犯版权、绕过授权、传播商业游戏资源或其他违法用途。使用者应自行承担使用本项目产生的全部责任。

@@ -13,6 +13,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CxdecStringDumper", "CxdecS
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CxdecKeyDumper", "CxdecKeyDumper\CxdecKeyDumper.vcxproj", "{6F5D2319-6B1D-4B24-85C1-2A8B59590AC1}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CxdecHashRestore", "CxdecHashRestore\CxdecHashRestore.vcxproj", "{E7350EA1-1D47-4C6E-99BA-C22E955D1A6A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86
@@ -39,6 +41,10 @@ Global
 		{6F5D2319-6B1D-4B24-85C1-2A8B59590AC1}.Debug|x86.Build.0 = Debug|Win32
 		{6F5D2319-6B1D-4B24-85C1-2A8B59590AC1}.Release|x86.ActiveCfg = Release|Win32
 		{6F5D2319-6B1D-4B24-85C1-2A8B59590AC1}.Release|x86.Build.0 = Release|Win32
+		{E7350EA1-1D47-4C6E-99BA-C22E955D1A6A}.Debug|x86.ActiveCfg = Debug|Win32
+		{E7350EA1-1D47-4C6E-99BA-C22E955D1A6A}.Debug|x86.Build.0 = Debug|Win32
+		{E7350EA1-1D47-4C6E-99BA-C22E955D1A6A}.Release|x86.ActiveCfg = Release|Win32
+		{E7350EA1-1D47-4C6E-99BA-C22E955D1A6A}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

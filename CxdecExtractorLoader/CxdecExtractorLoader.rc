@@ -60,17 +60,18 @@ IDI_MainIcon            ICON                    "AmetoYuki_1.ico"
 // Dialog
 //
 
-IDD_MainForm DIALOGEX 0, 0, 261, 126
+IDD_MainForm DIALOGEX 0, 0, 261, 151
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "CxdecExtractorLoader"
 FONT 9, "微软雅黑", 400, 0, 0x86
 BEGIN
-    PUSHBUTTON      "加载解包模块",IDC_Extractor,76,17,109,14,NOT WS_TABSTOP
-    PUSHBUTTON      "加载字符串Hash提取模块",IDC_StringDumper,76,42,109,14,NOT WS_TABSTOP
-    PUSHBUTTON      "加载Key提取模块",IDC_KeyDumper,76,67,109,14,NOT WS_TABSTOP
-    LTEXT           "提取进度",IDC_KeyProgressLabel,25,94,40,10
-    CONTROL         "",IDC_KeyProgress,"msctls_progress32",WS_BORDER | WS_TABSTOP,25,107,180,12
-    LTEXT           "0%",IDC_KeyProgressText,214,95,20,10
+    PUSHBUTTON      "加载解包模块",IDC_Extractor,38,17,185,14,NOT WS_TABSTOP
+    PUSHBUTTON      "加载运行时恢复Hash映射模块",IDC_StringDumper,38,42,185,14,NOT WS_TABSTOP
+    PUSHBUTTON      "加载Hook撞库恢复Hash映射模块",IDC_HashRestore,38,67,185,14,NOT WS_TABSTOP
+    PUSHBUTTON      "加载Key提取模块",IDC_KeyDumper,38,92,185,14,NOT WS_TABSTOP
+    LTEXT           "提取进度",IDC_KeyProgressLabel,25,119,40,10
+    CONTROL         "",IDC_KeyProgress,"msctls_progress32",WS_BORDER | WS_TABSTOP,25,132,180,12
+    LTEXT           "0%",IDC_KeyProgressText,214,120,20,10
 END
 
 

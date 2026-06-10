@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{2CE6F598-9288-413F-8D22-C4780B39E478}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{24E663A5-CEAA-4C1B-B812-C8F45157336A}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="dllmain.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\Common\path.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\Common\stringhelper.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\Common\util.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\CxdecStringDumper\HashRestoreUI.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\Common\path.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\Common\stringhelper.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\Common\util.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\CxdecStringDumper\HashRestoreUI.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+</Project>

@@ -177,6 +177,7 @@ namespace Engine
 		/// </summary>
 		/// <param name="directory">文件夹绝对路径</param>
 		void SetOutputDirectory(const std::wstring& directory);
+		void SetHashOutputDirectory(const std::wstring& directory);
 		void WriteDirectoryHash(const std::wstring& relativeDirPath, const std::wstring& hash);
 		void WriteFileNameHash(const std::wstring& fileName, const std::wstring& hash);
 
@@ -203,4 +204,3 @@ namespace Engine
 		static void Release();
 	};
 }
-

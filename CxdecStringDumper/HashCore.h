@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <string>
+#include <unordered_set>
 #include "tp_stub.h"
 #include "log.h"
 
@@ -157,6 +158,9 @@ namespace Engine
 		Log::Logger mDirectoryHashLogger;			//文件夹Hash日志
 		Log::Logger mFileNameHashLogger;			//文件名Hash日志
 		Log::Logger mUniversalLogger;				//通用日志
+		std::unordered_set<std::wstring> mKnownDirectoryHashLines;	//已记录的文件夹Hash行
+		std::unordered_set<std::wstring> mKnownFileNameHashLines;	//已记录的文件名Hash行
+		CRITICAL_SECTION mHashLineLock;				//Hash日志去重锁
 
 	private:
 		HashCore();
@@ -173,6 +177,8 @@ namespace Engine
 		/// </summary>
 		/// <param name="directory">文件夹绝对路径</param>
 		void SetOutputDirectory(const std::wstring& directory);
+		void WriteDirectoryHash(const std::wstring& relativeDirPath, const std::wstring& hash);
+		void WriteFileNameHash(const std::wstring& fileName, const std::wstring& hash);
 
 		/// <summary>
 		/// 初始化 (特征码找接口)
@@ -197,5 +203,4 @@ namespace Engine
 		static void Release();
 	};
 }
-
 

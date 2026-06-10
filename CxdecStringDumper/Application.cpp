@@ -1,4 +1,5 @@
 ﻿#include "Application.h"
+#include "HashRestoreUI.h"
 #include "path.h"
 #include "util.h"
 #include "ExtendUtils.h"
@@ -101,6 +102,7 @@ namespace Engine
     void Application::InitializeModule(HMODULE hModule)
     {
         this->mModuleDirectoryPath = Path::GetDirectoryName(Util::GetModulePathW(hModule));
+        HashRestoreUI::Start(hModule, this->mCurrentDirectoryPath);
     }
 
     void Application::InitializeTVPEngine(iTVPFunctionExporter* exporter)
@@ -146,4 +148,3 @@ namespace Engine
 
     //================================//
 }
-

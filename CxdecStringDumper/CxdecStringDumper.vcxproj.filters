@@ -67,6 +67,9 @@
     <ClCompile Include="HashCore.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="HashRestoreUI.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Common\directory.h">
@@ -106,6 +109,9 @@
       <Filter>源文件</Filter>
     </ClInclude>
     <ClInclude Include="ExtendUtils.h">
+      <Filter>源文件</Filter>
+    </ClInclude>
+    <ClInclude Include="HashRestoreUI.h">
       <Filter>源文件</Filter>
     </ClInclude>
   </ItemGroup>

@@ -168,6 +168,7 @@
     <ClCompile Include="Application.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="HashCore.cpp" />
+    <ClCompile Include="HashRestoreUI.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Common\directory.h" />
@@ -183,6 +184,7 @@
     <ClInclude Include="Application.h" />
     <ClInclude Include="ExtendUtils.h" />
     <ClInclude Include="HashCore.h" />
+    <ClInclude Include="HashRestoreUI.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -306,7 +306,7 @@ ch = ((ch & 0xaaaaaaaa) >> 1) | ((ch & 0x55555555) << 1);
 
 1. 用户把游戏 EXE 拖到 `CxdecExtractorLoader.exe`。
 2. Loader 解析命令行拿到目标游戏路径。
-3. 用户在对话框中选择“加载解包模块”或“加载字符串Hash提取模块”。
+3. 用户在对话框中选择“加载解包模块”“加载运行时恢复Hash映射模块”或“加载Hook撞库恢复Hash映射模块”。
 4. Loader 调用 `DetourCreateProcessWithDllW()`，创建带注入 DLL 的游戏进程。
 
 ### 步骤 2：等待 TVP/Cxdec 初始化
@@ -711,4 +711,3 @@ g_Instance->mDirectoryHashLogger.WriteUnicode(
 3. 最后补“多版本签名与结构适配层”
 
 这样能最快把当前“偏研究型工具”推进到“可连续生产使用的工程化工具”。
-

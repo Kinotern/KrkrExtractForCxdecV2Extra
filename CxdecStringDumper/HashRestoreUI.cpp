@@ -1762,6 +1762,7 @@ namespace
                 if (moved)
                 {
                     ++restoredCount;
+                    restoredSources.insert(relative);
                     restoredSources.insert(targetRelative);
                     AppendRecoveredNameLine(restore->HashLogDirectory, recoveredNameLines, candidate.DirectoryHash, dirIt->second.empty() ? L"/" : dirIt->second);
                     AppendRecoveredNameLine(restore->HashLogDirectory, recoveredNameLines, candidate.FileHash, fileIt->second);
@@ -2136,6 +2137,23 @@ namespace
                 return 0;
             }
             case WM_CLOSE:
+                if (context)
+                {
+                    if (context->Running)
+                    {
+                        SetEvent(context->CancelEvent);
+                        SetWindowTextW(context->Status, L"正在停止实时恢复，请等待当前任务退出后再关闭窗口。");
+                        SetWindowTextW(context->CurrentFile, L"当前文件：已请求停止");
+                        EnableWindow(context->Button, FALSE);
+                        SetWindowTextW(context->Button, L"正在停止...");
+                        return 0;
+                    }
+                    if (::InterlockedCompareExchange(&context->LoadingState, 0, 0) != 0)
+                    {
+                        SetWindowTextW(context->Status, L"正在加载映射与历史进度，请等待加载完成后再关闭窗口。");
+                        return 0;
+                    }
+                }
                 DestroyWindow(hwnd);
                 return 0;
             case WM_DESTROY:
@@ -2254,6 +2272,12 @@ namespace Engine
         context->InitialSourceDirectory = initialSourceDirectory;
         context->ShowCrackTools = showCrackTools;
         context->CancelEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!context->CancelEvent)
+        {
+            ::InterlockedExchange(&g_WindowActive, 0);
+            delete context;
+            return;
+        }
 
         HANDLE thread = CreateThread(nullptr, 0u, UiThreadProc, context, 0u, nullptr);
         if (thread)

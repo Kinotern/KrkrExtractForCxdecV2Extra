@@ -81,6 +81,7 @@
       <ControlFlowGuard>false</ControlFlowGuard>
       <MultiProcessorCompilation>false</MultiProcessorCompilation>
       <FloatingPointExceptions>false</FloatingPointExceptions>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -126,6 +127,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)Common;$(SolutionDir)KrkrPlugin;$(SolutionDir)Detours;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <MultiProcessorCompilation>false</MultiProcessorCompilation>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

@@ -1,6 +1,6 @@
 # KrkrExtractV2 (For CxdecV2)
 
-本项目由GPT-5.5编写、整理和增强，面向 Wamsoft / KiriKiri Z Hxv4 2021.11+ / CxdecV2 系列加密游戏，提供一套动态分析与资源整理工具。
+本项目由GPT-5.5编写主要程序与DeepSeek-V4-Pro编写注释、整理和增强，面向 Wamsoft / KiriKiri Z Hxv4 2021.11+ / CxdecV2 系列加密游戏，提供一套动态分析与资源整理工具。
 
 主要功能：
 
@@ -17,7 +17,7 @@
 - 编译器：MSVC 2022
 - 平台：x86 / Win32
 - SDK：Windows 10 SDK 10.0.19041.0 或更新版本
-- 还有一块能装大体积文件的硬盘
+- 存储空间：建议准备足够空间保存 `Extractor_Output`、`StringHashDumper_Output` 和恢复日志。
 
 ## 模块说明
 
@@ -40,7 +40,7 @@
   运行时 Key 提取模块。用于导出 CxdecV2 / Hxv4 相关解密参数。
 
 - `ExtractorOutputRestorer`  
-  Loader 内置的资源文件名还原功能。读取 `Extractor_Output` 和 `StringHashDumper_Output`，生成 `Restored_Extractor_Output`。
+  Loader 早期内置的离线资源文件名还原功能。读取 `Extractor_Output` 和 `StringHashDumper_Output`，生成 `Restored_Extractor_Output`。当前更推荐使用运行时恢复 Hash 映射模块直接在 `Extractor_Output` 中实时恢复。
 
 ## 当前功能
 
@@ -66,9 +66,9 @@
 - `Extractor.log`
 - `ExtractorUI.log`
 
-### 2. 字符串 Hash 提取
+### 2. 运行时恢复 Hash 映射
 
-运行时提取目录名和文件名的 Hash 映射，输出到：
+运行时提取目录名和文件名的 Hash 映射，并可对纯 Hash 解包目录进行实时恢复。Hash 映射输出到：
 
 ```text
 游戏目录\StringHashDumper_Output\
@@ -79,6 +79,7 @@
 - `DirectoryHash.log`
 - `FileNameHash.log`
 - `Universal.log`
+- `HashRestore_RecoveredNames.lst`
 
 日志格式大致为：
 
@@ -91,8 +92,32 @@
 - `DirectoryHash.log` 用于还原目录名。
 - `FileNameHash.log` 用于还原文件名和后缀。
 - `Universal.log` 记录 Hash Seed、Salt 等辅助信息。
+- `HashRestore_RecoveredNames.lst` 是跨运行时恢复和 Hook 撞库恢复共享的 `HASH:name` 映射表。
 
-### 3. Key 提取
+实时恢复窗口中只有一个主操作按钮：
+
+```text
+开始实时恢复 -> 停止实时恢复 -> 正在停止...
+```
+
+窗口会显示映射加载、纯 Hash 目录扫描、当前恢复文件、已恢复数量、剩余数量、失败数量和进度百分比。加载或恢复过程中会临时禁用目录选择和补充 lst 选择，避免多个恢复任务互相冲突。
+
+### 3. Hook 撞库恢复 Hash 映射
+
+Hook 撞库恢复模块用于批量补充 Hash 映射。它会先打开准备窗口，用户确认纯 Hash 目录、Hash 输出目录、候选表和可选补充 lst 后，再点击 `开始撞库` 启动游戏并注入 `CxdecHashRestore.dll`。
+
+典型流程：
+
+1. 选择纯 Hash 目录，通常是 `游戏目录\Extractor_Output`
+2. 选择 Hash 输出目录，通常是 `游戏目录\StringHashDumper_Output`
+3. 可选：选择补充 lst 映射
+4. 制作或选择 `dirs_*.txt` / `files_*.txt` 候选表
+5. 点击 `开始撞库`
+6. 撞库结果直接追加到 `HashRestore_RecoveredNames.lst`
+
+候选表和恢复映射格式详见 [Hash 恢复模块开发文档](docs/hash-restore-workflow.md)。
+
+### 4. Key 提取
 
 原生 C++ 版 Key 提取模块已经实现，不再依赖 Frida。
 
@@ -147,7 +172,7 @@
 - `* OddBranchOrder (garbro) : ...`
 - `* EvenBranchOrder (garbro) : ...`
 
-### 4. 资源文件名还原
+### 5. 离线资源文件名还原
 
 纯 Hash XP3 解包后，资源通常会以 Hash 目录和 Hash 文件名形式输出，例如：
 
@@ -190,7 +215,7 @@ StringHashDumper_Output\FileNameHash.log
 游戏目录\Restored_Extractor_Output\RestoreReport.txt
 ```
 
-如果还原成功率不高，通常是 `FileNameHash.log` 收集不完整。可以重新运行 `加载运行时恢复Hash映射模块`，并在游戏中尽量进入更多场景，例如标题菜单、设置、存档读档、剧情、CG、回想、鉴赏、章节选择等，让游戏加载更多资源名字符串。
+如果还原成功率不高，通常是 `FileNameHash.log` 或 `HashRestore_RecoveredNames.lst` 收集不完整。可以重新运行 `加载运行时恢复Hash映射模块`，或使用 `加载Hook撞库恢复Hash映射模块` 根据候选表批量补充映射。
 
 ## 使用方法
 
@@ -218,7 +243,7 @@ StringHashDumper_Output\FileNameHash.log
 4. 等待后台队列解包完成
 5. 查看 `Extractor_Output`
 
-### 提取字符串 Hash
+### 运行时恢复 Hash 映射
 
 1. 把游戏主程序拖到 `CxdecExtractorLoader.exe`
 2. 点击 `加载运行时恢复Hash映射模块`
@@ -238,7 +263,7 @@ StringHashDumper_Output\FileNameHash.log
 ### 还原资源文件名
 
 1. 先完成 XP3 解包，确保存在 `Extractor_Output`
-2. 再运行字符串 Hash 提取，确保存在 `StringHashDumper_Output`
+2. 再运行运行时恢复 Hash 映射或 Hook 撞库恢复，确保存在 `StringHashDumper_Output`
 3. 把游戏主程序拖到 `CxdecExtractorLoader.exe`
 4. 点击 `还原资源文件名`
 5. 查看 `Restored_Extractor_Output`
@@ -259,12 +284,32 @@ msbuild KrkrZCxdecV2.sln /p:Configuration=Release /p:Platform=x86 /m
 Release\
 ```
 
+也可以直接使用 PowerShell 调用 MSBuild：
+
+```powershell
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe' 'O:\Github\KrkrExtractForCxdecV2Extra\KrkrZCxdecV2.sln' /p:Configuration=Release /p:Platform=x86 /m
+```
+
+如果需要清理 Debug 目录下的链接副产物：
+
+```cmd
+del /q "O:\Github\KrkrExtractForCxdecV2Extra\Debug\*.exp" "O:\Github\KrkrExtractForCxdecV2Extra\Debug\*.lib" "O:\Github\KrkrExtractForCxdecV2Extra\Debug\*.pdb"
+```
+
+上传 GitHub 前建议确认：
+
+- 不提交 `Debug/`、`Release/`、`.vs/` 等编译目录。
+- 文本文件末尾保留换行。
+- 工程使用 `/utf-8` 编译，中文文本直接保存为 UTF-8。
+- 重新执行一次 `Release|x86` 编译，确认 `0 个警告，0 个错误`。
+
 ## 已知限制
 
 - XP3 批量解包是队列化串行执行，不支持单进程内并发解包。
 - 纯 Hash 封包本身不包含明文文件名，解包结果默认仍是 Hash 目录和 Hash 文件名。
-- 字符串 Hash 提取无法保证一次性覆盖游戏内所有路径和文件名，是否能抓到取决于运行路径。
-- 资源文件名还原依赖 `DirectoryHash.log` 和 `FileNameHash.log` 的完整度。
+- 运行时恢复 Hash 映射无法保证一次性覆盖游戏内所有路径和文件名，是否能抓到取决于运行路径。
+- Hook 撞库恢复依赖候选表质量；候选名越接近真实资源路径，补充效果越好。
+- 资源文件名还原依赖 `DirectoryHash.log`、`FileNameHash.log` 和 `HashRestore_RecoveredNames.lst` 的完整度。
 - 若复制失败，可能与路径过长、非法文件名、文件占用或权限有关。
 
 ## 同类工具参考

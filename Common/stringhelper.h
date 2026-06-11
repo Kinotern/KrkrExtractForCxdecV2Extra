@@ -1,4 +1,4 @@
-﻿/**
+﻿﻿/**
  * @file stringhelper.h
  * @brief 字符串操作工具类
  * 

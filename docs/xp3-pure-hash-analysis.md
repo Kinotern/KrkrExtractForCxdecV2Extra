@@ -7,13 +7,14 @@
 - `CxdecExtractorLoader`：负责把功能 DLL 注入游戏进程
 - `CxdecExtractorUI`：负责拖拽 XP3 的交互入口
 - `CxdecExtractor`：负责定位游戏内部接口、读取文件表、创建资源流、落盘输出
-- `CxdecStringDumper`：负责在游戏运行期记录“字符串 -> Hash”映射
+- `CxdecStringDumper`：负责在游戏运行期记录“字符串 -> Hash”映射，并可按 lst 映射实时恢复纯 Hash 目录
+- `CxdecHashRestore`：负责通过 Hook 撞库批量补充 Hash 映射 lst
 
 先给出三个关键结论：
 
 1. 当前仓库**已经实现**“单个 XP3 纯哈希解包”和“纯哈希目录结构创建”。
 2. 当前仓库**没有真正实现**“多 XP3 批量拖拽解包”。UI 代码只读取拖入列表的第一个文件，README 也明确写明“不支持，仅支持单个封包逐个拖拽提取”。
-3. 当前仓库**没有实现**“把纯哈希目录自动还原为明文目录/文件名”的后处理流程；它只是额外提供了 `CxdecStringDumper`，用于在游戏运行时抓取目录名和文件名的 Hash 映射，为后续人工或外部工具还原命名提供基础数据。
+3. 当前仓库已经补充运行时恢复和 Hook 撞库恢复流程：`CxdecStringDumper` 可在运行时按 lst 映射恢复纯 Hash 解包目录，`CxdecHashRestore` 可批量计算候选名并续写 `HashRestore_RecoveredNames.lst`。
 
 ## 2. 能力边界校验
 
@@ -24,7 +25,7 @@
 | 纯哈希 `.alst` 文件表输出 | 已实现 | `CxdecExtractor/ExtractCore.cpp` |
 | 多文件批量拖拽解包 | 未实现 | `CxdecExtractorUI/dllmain.cpp` 仅调用 `DragQueryFileW(..., 0, ...)` |
 | 运行时目录名/文件名 Hash 映射采集 | 已实现 | `CxdecStringDumper/HashCore.cpp` |
-| 自动按映射重命名已解包结果 | 未实现 | 仓库内无对应模块 |
+| 自动按映射重命名已解包结果 | 已实现 | `CxdecStringDumper/HashRestoreUI.cpp`、`CxdecStringDumper/HashCore.cpp` |
 
 这一点非常重要：如果从产品需求角度谈“批量解包 XP3 纯哈希文件”，那么当前实现更准确的描述应该是：
 
@@ -41,7 +42,8 @@
 | `CxdecExtractorLoader` | 启动游戏并注入解包/Hash 采集 DLL |
 | `CxdecExtractorUI` | 创建拖拽窗口，接收 XP3 文件并调用导出函数 `ExtractPackage` |
 | `CxdecExtractor` | 在游戏进程内定位 Cxdec/Hxv4 内部接口，读取索引并提取资源 |
-| `CxdecStringDumper` | Hook 游戏内部 Hash 计算接口，记录明文字符串与 Hash 的对应关系 |
+| `CxdecStringDumper` | Hook 游戏内部 Hash 计算接口，记录明文字符串与 Hash 的对应关系，并执行运行时恢复 |
+| `CxdecHashRestore` | Hook 撞库恢复 Hash 映射模块，批量补充 lst |
 | `Common` | 提供路径、目录、日志、文件、PE 特征搜索等基础能力 |
 
 ### 3.2 端到端流程图

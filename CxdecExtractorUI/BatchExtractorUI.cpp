@@ -4,6 +4,7 @@
 #include <CommCtrl.h>
 #include <CommDlg.h>
 #include <ShlObj.h>
+#include <ShObjIdl.h>
 #include <Shlwapi.h>
 #include <strsafe.h>
 
@@ -38,6 +39,7 @@ namespace
     struct TaskRecord
     {
         unsigned int Id;
+        unsigned int BatchId;
         std::wstring PackagePath;
         std::wstring DisplayName;
         std::wstring OutputDirectory;
@@ -53,6 +55,7 @@ namespace
     struct PendingTask
     {
         unsigned int Id;
+        unsigned int BatchId;
         std::wstring PackagePath;
         std::wstring OutputDirectory;
     };
@@ -90,6 +93,9 @@ namespace
         std::wstring ModuleDirectory;
         std::wstring UiLogPath;
         unsigned int NextTaskId;
+        unsigned int ActiveBatchId;
+        unsigned int NextBatchId;
+        unsigned int DisplayedOverallPercent;
         LONG ActiveWorkers;
         bool CompletionNotified;
     };
@@ -276,6 +282,70 @@ namespace
         return ListView_FindItem(listView, -1, &info);
     }
 
+    bool HasUnfinishedTaskInBatch(const UiContext* context, unsigned int batchId)
+    {
+        for (const TaskRecord& task : context->Tasks)
+        {
+            if (task.BatchId == batchId && !task.Finished)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool HasQueuedTaskInBatch(const UiContext* context, unsigned int batchId)
+    {
+        for (const PendingTask& task : context->Queue)
+        {
+            if (task.BatchId == batchId)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    unsigned int FindNextPendingBatchId(const UiContext* context)
+    {
+        unsigned int nextBatchId = 0u;
+        for (const TaskRecord& task : context->Tasks)
+        {
+            if (!task.Finished && (nextBatchId == 0u || task.BatchId < nextBatchId))
+            {
+                nextBatchId = task.BatchId;
+            }
+        }
+        return nextBatchId;
+    }
+
+    void AdvanceBatchIfIdle(UiContext* context)
+    {
+        if (!context || context->ActiveWorkers > 0)
+        {
+            return;
+        }
+
+        ::EnterCriticalSection(&context->QueueLock);
+        bool hasCurrentQueued = HasQueuedTaskInBatch(context, context->ActiveBatchId);
+        ::LeaveCriticalSection(&context->QueueLock);
+
+        if (hasCurrentQueued || HasUnfinishedTaskInBatch(context, context->ActiveBatchId))
+        {
+            return;
+        }
+
+        unsigned int nextBatchId = FindNextPendingBatchId(context);
+        if (nextBatchId != 0u && nextBatchId != context->ActiveBatchId)
+        {
+            context->ActiveBatchId = nextBatchId;
+            context->DisplayedOverallPercent = 0u;
+            ::SendMessageW(context->OverallProgress, PBM_SETPOS, 0, 0);
+            ::SetEvent(context->QueueEvent);
+            WriteUiLog(context, L"Advanced to batch #%u", nextBatchId);
+        }
+    }
+
     void RefreshTaskRow(UiContext* context, int taskIndex)
     {
         if (!context || taskIndex < 0 || taskIndex >= (int)context->Tasks.size())
@@ -322,26 +392,40 @@ namespace
 
     std::wstring BrowseFolder(HWND owner, const std::wstring& title)
     {
-        wchar_t display[MaxUiPath]{};
-        BROWSEINFOW info{};
-        info.hwndOwner = owner;
-        info.pszDisplayName = display;
-        info.lpszTitle = title.c_str();
-        info.ulFlags = BIF_NEWDIALOGSTYLE | BIF_RETURNONLYFSDIRS;
-
-        LPITEMIDLIST idList = ::SHBrowseForFolderW(&info);
-        if (!idList)
+        IFileDialog* dialog = nullptr;
+        HRESULT hr = ::CoCreateInstance(CLSID_FileOpenDialog,
+                                        nullptr,
+                                        CLSCTX_INPROC_SERVER,
+                                        IID_PPV_ARGS(&dialog));
+        if (FAILED(hr) || !dialog)
         {
             return std::wstring();
         }
 
-        wchar_t folder[MaxUiPath]{};
         std::wstring result;
-        if (::SHGetPathFromIDListW(idList, folder))
+        DWORD options = 0;
+        if (SUCCEEDED(dialog->GetOptions(&options)))
         {
-            result = folder;
+            dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
         }
-        ::CoTaskMemFree(idList);
+        dialog->SetTitle(title.c_str());
+
+        if (SUCCEEDED(dialog->Show(owner)))
+        {
+            IShellItem* item = nullptr;
+            if (SUCCEEDED(dialog->GetResult(&item)) && item)
+            {
+                PWSTR path = nullptr;
+                if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path)
+                {
+                    result = path;
+                    ::CoTaskMemFree(path);
+                }
+                item->Release();
+            }
+        }
+
+        dialog->Release();
         return result;
     }
 
@@ -384,11 +468,15 @@ namespace
         bool hasTask = false;
 
         ::EnterCriticalSection(&context->QueueLock);
-        if (!context->Queue.empty())
+        for (auto it = context->Queue.begin(); it != context->Queue.end(); ++it)
         {
-            task = context->Queue.front();
-            context->Queue.pop_front();
-            hasTask = true;
+            if (it->BatchId == context->ActiveBatchId)
+            {
+                task = *it;
+                context->Queue.erase(it);
+                hasTask = true;
+                break;
+            }
         }
 
         if (context->Queue.empty())
@@ -400,10 +488,11 @@ namespace
         return hasTask;
     }
 
-    void EnqueueTask(UiContext* context, const std::wstring& packagePath, const std::wstring& outputDirectory)
+    void EnqueueTask(UiContext* context, const std::wstring& packagePath, const std::wstring& outputDirectory, unsigned int batchId)
     {
         TaskRecord task{};
         task.Id = context->NextTaskId++;
+        task.BatchId = batchId;
         task.PackagePath = packagePath;
         task.DisplayName = ::PathFindFileNameW(packagePath.c_str());
         task.OutputDirectory = outputDirectory;
@@ -419,12 +508,12 @@ namespace
         RefreshTaskRow(context, (int)context->Tasks.size() - 1);
 
         ::EnterCriticalSection(&context->QueueLock);
-        context->Queue.push_back(PendingTask{ task.Id, packagePath, outputDirectory });
+        context->Queue.push_back(PendingTask{ task.Id, batchId, packagePath, outputDirectory });
         ::SetEvent(context->QueueEvent);
         ::LeaveCriticalSection(&context->QueueLock);
 
         context->CompletionNotified = false;
-        WriteUiLog(context, L"Task queued: #%u %s -> %s", task.Id, packagePath.c_str(), outputDirectory.c_str());
+        WriteUiLog(context, L"Task queued: #%u batch=%u %s -> %s", task.Id, batchId, packagePath.c_str(), outputDirectory.c_str());
     }
 
     void AddPackageFiles(UiContext* context, const std::vector<std::wstring>& paths)
@@ -442,6 +531,26 @@ namespace
         }
 
         unsigned int acceptedCount = 0u;
+        bool hasActiveBatchWork = (context->ActiveWorkers > 0) || HasUnfinishedTaskInBatch(context, context->ActiveBatchId);
+        unsigned int batchId = 0u;
+        if (!hasActiveBatchWork)
+        {
+            if (context->ActiveBatchId == 0u)
+            {
+                context->ActiveBatchId = 1u;
+                context->NextBatchId = 2u;
+            }
+            batchId = context->ActiveBatchId;
+        }
+        else
+        {
+            if (context->NextBatchId == 0u)
+            {
+                context->NextBatchId = context->ActiveBatchId + 1u;
+            }
+            batchId = context->NextBatchId++;
+        }
+
         for (const std::wstring& path : paths)
         {
             if (!IsSupportedPackage(path))
@@ -450,7 +559,7 @@ namespace
                 continue;
             }
 
-            EnqueueTask(context, path, outputDirectory);
+            EnqueueTask(context, path, outputDirectory, batchId);
             ++acceptedCount;
         }
 
@@ -520,10 +629,13 @@ namespace
         }
 
         unsigned int queuedCount = 0u;
+        unsigned int nextBatchCount = 0u;
         unsigned int finishedCount = 0u;
         unsigned int failedCount = 0u;
-        unsigned int progressCurrent = 0u;
-        unsigned int progressTotal = 0u;
+        unsigned int activeBatchTaskCount = 0u;
+        unsigned int activeBatchFinishedCount = 0u;
+        unsigned long long progressCurrent = 0u;
+        unsigned long long progressTotal = 0u;
 
         ::EnterCriticalSection(&context->QueueLock);
         queuedCount = (unsigned int)context->Queue.size();
@@ -540,9 +652,24 @@ namespace
                 }
             }
 
+            if (!task.Finished && task.BatchId != context->ActiveBatchId)
+            {
+                ++nextBatchCount;
+            }
+            if (task.BatchId != context->ActiveBatchId)
+            {
+                continue;
+            }
+
+            ++activeBatchTaskCount;
+            if (task.Finished)
+            {
+                ++activeBatchFinishedCount;
+            }
+
             if (task.Total > 0u)
             {
-                progressCurrent += std::min(task.Current, task.Total);
+                progressCurrent += task.Finished ? task.Total : std::min(task.Current, task.Total);
                 progressTotal += task.Total;
             }
             else
@@ -558,16 +685,31 @@ namespace
         unsigned int percent = 0u;
         if (progressTotal > 0u)
         {
-            percent = (progressCurrent * 100u) / progressTotal;
+            percent = (unsigned int)((progressCurrent * 100ull) / progressTotal);
         }
+        if (activeBatchTaskCount > 0u && activeBatchFinishedCount == activeBatchTaskCount)
+        {
+            percent = 100u;
+        }
+        else if (percent < context->DisplayedOverallPercent)
+        {
+            percent = context->DisplayedOverallPercent;
+        }
+        if (percent > 100u)
+        {
+            percent = 100u;
+        }
+        context->DisplayedOverallPercent = percent;
 
         SendMessageW(context->OverallProgress, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
         SendMessageW(context->OverallProgress, PBM_SETPOS, percent, 0);
 
-        std::wstring status = FormatString(L"总任务 %u | 运行中 %ld | 排队 %u | 完成 %u | 失败 %u",
+        std::wstring status = FormatString(L"总任务 %u | 当前批次 %u/%u | 下一批 %u | 运行中 %ld | 完成 %u | 失败 %u",
                                            (unsigned int)context->Tasks.size(),
+                                           activeBatchFinishedCount,
+                                           activeBatchTaskCount,
+                                           nextBatchCount,
                                            context->ActiveWorkers,
-                                           queuedCount,
                                            finishedCount,
                                            failedCount);
         ::SetWindowTextW(context->StatusText, status.c_str());
@@ -855,10 +997,12 @@ namespace
 
                     ::HeapFree(::GetProcessHeap(), 0, message);
                 }
+                AdvanceBatchIfIdle(context);
                 UpdateSummary(context);
                 return TRUE;
             }
             case WM_APP_WATCHDOG_TICK:
+                AdvanceBatchIfIdle(context);
                 UpdateSummary(context);
                 return TRUE;
             case WM_CLOSE:
@@ -894,6 +1038,9 @@ namespace UI
         context->StopEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
         context->WatchdogThread = nullptr;
         context->NextTaskId = 1u;
+        context->ActiveBatchId = 1u;
+        context->NextBatchId = 2u;
+        context->DisplayedOverallPercent = 0u;
         context->ActiveWorkers = 0;
         context->CompletionNotified = false;
         ::InitializeCriticalSection(&context->QueueLock);

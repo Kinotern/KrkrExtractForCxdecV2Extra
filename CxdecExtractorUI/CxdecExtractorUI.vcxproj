@@ -55,6 +55,9 @@
     <EmbedManifest>false</EmbedManifest>
     <LinkDelaySign>false</LinkDelaySign>
     <LinkIncremental>false</LinkIncremental>
+
+    <OutDir>$(SolutionDir)Release\CxdecExtractordll\</OutDir>
+    <IntDir>$(ProjectDir)$(Configuration)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -154,6 +157,9 @@
       <WindowsMetadataLinkDelaySign>false</WindowsMetadataLinkDelaySign>
       <LargeAddressAware>false</LargeAddressAware>
       <CETCompat>false</CETCompat>
+
+      <ImportLibrary>$(IntDir)$(TargetName).lib</ImportLibrary>
+      <ProgramDatabaseFile>$(IntDir)$(TargetName).pdb</ProgramDatabaseFile>
     </Link>
     <Manifest>
       <VerboseOutput>false</VerboseOutput>

@@ -57,6 +57,8 @@
     <EmbedManifest>true</EmbedManifest>
     <ManagedAssembly>false</ManagedAssembly>
     <LinkDelaySign>false</LinkDelaySign>
+    <OutDir>$(SolutionDir)Release\</OutDir>
+    <IntDir>$(ProjectDir)$(Configuration)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -150,6 +152,8 @@
       <CETCompat>false</CETCompat>
       <SupportNobindOfDelayLoadedDLL>true</SupportNobindOfDelayLoadedDLL>
       <EnableUAC>false</EnableUAC>
+      <ImportLibrary>$(IntDir)$(TargetName).lib</ImportLibrary>
+      <ProgramDatabaseFile>$(IntDir)$(TargetName).pdb</ProgramDatabaseFile>
     </Link>
     <Manifest>
       <VerboseOutput>false</VerboseOutput>

@@ -438,6 +438,21 @@ del /q "O:\Github\KrkrExtractForCxdecV2Extra\Debug\*.exp" "O:\Github\KrkrExtract
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe' 'O:\Github\KrkrExtractForCxdecV2Extra\KrkrZCxdecV2.sln' /p:Configuration=Release /p:Platform=x86 /m
 ```
 
+Release 发布目录结构：
+
+```text
+Release\
+  CxdecExtractorLoader.exe
+  CxdecExtractordll\
+    CxdecExtractor.dll
+    CxdecExtractorUI.dll
+    CxdecStringDumper.dll
+    CxdecHashRestore.dll
+    CxdecKeyDumper.dll
+```
+
+Loader 统一通过 `CxdecExtractordll\模块名.dll` 查找功能模块，并保留同目录查找作为兼容回退。
+
 上传 GitHub 前建议检查：
 
 ```powershell

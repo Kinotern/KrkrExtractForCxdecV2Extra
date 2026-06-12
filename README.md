@@ -221,13 +221,20 @@ StringHashDumper_Output\FileNameHash.log
 
 ### 准备
 
-将以下文件放在同一目录：
+发布目录使用 Loader + 模块 DLL 目录结构：
 
-- `CxdecExtractorLoader.exe`
-- `CxdecExtractor.dll`
-- `CxdecExtractorUI.dll`
-- `CxdecStringDumper.dll`
-- `CxdecKeyDumper.dll`
+```text
+Release\
+  CxdecExtractorLoader.exe
+  CxdecExtractordll\
+    CxdecExtractor.dll
+    CxdecExtractorUI.dll
+    CxdecStringDumper.dll
+    CxdecHashRestore.dll
+    CxdecKeyDumper.dll
+```
+
+Loader 会优先从自身目录下的 `CxdecExtractordll\` 子目录加载模块 DLL，便于后续继续扩展独立模块。
 
 同时确保：
 
@@ -282,6 +289,13 @@ msbuild KrkrZCxdecV2.sln /p:Configuration=Release /p:Platform=x86 /m
 
 ```text
 Release\
+  CxdecExtractorLoader.exe
+  CxdecExtractordll\
+    CxdecExtractor.dll
+    CxdecExtractorUI.dll
+    CxdecStringDumper.dll
+    CxdecHashRestore.dll
+    CxdecKeyDumper.dll
 ```
 
 也可以直接使用 PowerShell 调用 MSBuild：

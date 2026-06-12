@@ -102,6 +102,29 @@ namespace
         return !left.empty() && !right.empty() && _wcsicmp(left.c_str(), right.c_str()) == 0;
     }
 
+    bool FileExistsLocal(const std::wstring& path)
+    {
+        DWORD attributes = ::GetFileAttributesW(path.c_str());
+        return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+    }
+
+    std::wstring GetModuleDllPath(const std::wstring& dllFileName)
+    {
+        std::wstring modulePath = Path::Combine(Path::Combine(g_LoaderCurrentDirectory, L"CxdecExtractordll"), dllFileName);
+        if (FileExistsLocal(modulePath))
+        {
+            return modulePath;
+        }
+
+        std::wstring fallbackPath = Path::Combine(g_LoaderCurrentDirectory, dllFileName);
+        if (FileExistsLocal(fallbackPath))
+        {
+            return fallbackPath;
+        }
+
+        return modulePath;
+    }
+
     std::wstring FormatString(const wchar_t* format, ...)
     {
         wchar_t buffer[2048]{};
@@ -879,7 +902,17 @@ INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 
             if (!injectDllFileName.empty())
             {
-                std::wstring injectDllFullPath = Path::Combine(g_LoaderCurrentDirectory, injectDllFileName);
+                std::wstring injectDllFullPath = GetModuleDllPath(injectDllFileName);
+                if (!FileExistsLocal(injectDllFullPath))
+                {
+                    ::MessageBoxW(hwnd,
+                                  FormatString(L"找不到模块 DLL：\r\n%s\r\n\r\n请确认发布结构为：\r\nCxdecExtractorLoader.exe\r\nCxdecExtractordll\\%s",
+                                               injectDllFullPath.c_str(),
+                                               injectDllFileName.c_str()).c_str(),
+                                  L"CxdecExtractorLoader",
+                                  MB_OK | MB_ICONERROR);
+                    return TRUE;
+                }
                 std::string injectDllFullPathA = Encoding::UnicodeToAnsi(injectDllFullPath, Encoding::CodePage::ACP);
 
                 STARTUPINFOW si{};

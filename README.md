@@ -39,8 +39,6 @@
 - `CxdecKeyDumper.dll`  
   运行时 Key 提取模块。用于导出 CxdecV2 / Hxv4 相关解密参数。
 
-- `ExtractorOutputRestorer`  
-  Loader 早期内置的离线资源文件名还原功能。读取 `Extractor_Output` 和 `StringHashDumper_Output`，生成 `Restored_Extractor_Output`。当前更推荐使用运行时恢复 Hash 映射模块直接在 `Extractor_Output` 中实时恢复。
 
 ## 当前功能
 

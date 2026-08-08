@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|Win32"><Configuration>Release</Configuration><Platform>Win32</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{B1C4D6E8-2F3A-4B5C-9D0E-1F2A3B4C5D6E}</ProjectGuid>
+    <RootNamespace>CxdecAntiMalform</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>..\Release\CxdecExtractordll\</OutDir>
+    <IntDir>$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>..\Detours;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <AdditionalDependencies>shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>del "$(OutDir)CxdecAntiMalform.lib" "$(OutDir)CxdecAntiMalform.exp" 2&gt;nul</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="detour_finder.cpp" />
+    <ClCompile Include="runtime_hook.cpp" />
+    <ClCompile Include="kmp_search.cpp" />
+    <ClCompile Include="tjs2_parser.cpp" />
+    <ClCompile Include="tjs_patcher.cpp" />
+    <ClCompile Include="..\Detours\detours.cpp" />
+    <ClCompile Include="..\Detours\disasm.cpp" />
+    <ClCompile Include="..\Detours\image.cpp" />
+    <ClCompile Include="..\Detours\modules.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="detour_finder.h" />
+    <ClInclude Include="runtime_hook.h" />
+    <ClInclude Include="tjs2_parser.h" />
+    <ClInclude Include="kmp_search.h" />
+    <ClInclude Include="tjs_patcher.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

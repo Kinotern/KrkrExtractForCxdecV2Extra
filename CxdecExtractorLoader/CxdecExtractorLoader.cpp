@@ -1,6 +1,7 @@
 ﻿#include <windows.h>
 #include <commctrl.h>
 #include <detours.h>
+#include "detour_section.h"
 #include <ShObjIdl.h>
 #include <ShlObj.h>
 #include <algorithm>
@@ -913,8 +914,8 @@ INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                                   MB_OK | MB_ICONERROR);
                     return TRUE;
                 }
-                std::string injectDllFullPathA = Encoding::UnicodeToAnsi(injectDllFullPath, Encoding::CodePage::ACP);
-
+                // 用 CREATE_SUSPENDED + RemoteThread 替代 DetourCreateProcessWithDllW
+                // 避免 ANSI 编码在日文路径下损坏 DLL 路径
                 STARTUPINFOW si{};
                 si.cb = sizeof(si);
                 PROCESS_INFORMATION pi{};
@@ -933,20 +934,22 @@ INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                     ::SetEnvironmentVariableW(HashCrackSuppressRestoreUiEnvName, L"1");
                 }
 
-                // 直接用 Detours 创建并注入，避免额外的远程线程/写内存步骤。
-                if (DetourCreateProcessWithDllW(g_KrkrExeFullPath.c_str(),
-                                                NULL,
-                                                NULL,
-                                                NULL,
-                                                FALSE,
-                                                0u,
-                                                NULL,
-                                                g_KrkrExeDirectory.c_str(),
-                                                &si,
-                                                &pi,
-                                                injectDllFullPathA.c_str(),
-                                                NULL))
+                if (CreateProcessW(g_KrkrExeFullPath.c_str(), NULL, NULL, NULL, FALSE,
+                                   CREATE_SUSPENDED, NULL, g_KrkrExeDirectory.c_str(), &si, &pi))
                 {
+                    SIZE_T pathBytes = (injectDllFullPath.length() + 1) * sizeof(wchar_t);
+                    LPVOID pRemote = VirtualAllocEx(pi.hProcess, NULL, pathBytes,
+                        MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                    if (pRemote) {
+                        WriteProcessMemory(pi.hProcess, pRemote, injectDllFullPath.c_str(), pathBytes, NULL);
+                        auto* pLL = (LPTHREAD_START_ROUTINE)GetProcAddress(
+                            GetModuleHandleW(L"kernel32.dll"), "LoadLibraryW");
+                        HANDLE hTh = CreateRemoteThread(pi.hProcess, NULL, 0, pLL, pRemote, 0, NULL);
+                        if (hTh) { WaitForSingleObject(hTh, INFINITE); CloseHandle(hTh); }
+                        VirtualFreeEx(pi.hProcess, pRemote, 0, MEM_RELEASE);
+                    }
+                    ResumeThread(pi.hThread);
+
                     if (!runtimeHashTargetDirectory.empty())
                     {
                         ::SetEnvironmentVariableW(RuntimeHashTargetDirectoryEnvName, nullptr);
@@ -1051,6 +1054,100 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     g_LoaderCurrentDirectory = loaderCurrentDirectory;
     g_KrkrExeFullPath = krkrExeFullPath;
     g_KrkrExeDirectory = krkrExeDirectory;
+
+	// SteamStub auto-unpack
+	{
+		auto Log = [&](const wchar_t* s) {
+			OutputDebugStringW(s);
+			std::wstring lp = g_LoaderFullPath.substr(0, g_LoaderFullPath.rfind(L'\\') + 1) + L"CxdecExtractorLoader.log";
+			FILE* f = nullptr; _wfopen_s(&f, lp.c_str(), L"a");
+			if (f) { fwprintf(f, L"%s\n", s); fclose(f); }
+		};
+
+		auto LdDir = [&]() { return g_LoaderFullPath.substr(0, g_LoaderFullPath.rfind(L'\\') + 1); };
+		HMODULE hUnp = LoadLibraryW((LdDir() + L"CxdecExtractordll\\CxdecPeUnpacker.dll").c_str());
+		if (hUnp && !g_KrkrExeFullPath.empty() && g_KrkrExeFullPath != loaderFullPath)
+		{
+			auto D = (bool(*)(const wchar_t*))GetProcAddress(hUnp, "CxdecPeUnpacker_Detect");
+			auto P = (bool(*)(const wchar_t*,const wchar_t*))GetProcAddress(hUnp, "CxdecPeUnpacker_Process");
+			Log(L"[Loader] Checking SteamStub...");
+			if (D && P && D(g_KrkrExeFullPath.c_str()))
+			{
+				Log(L"[Loader] SteamStub detected");
+				if (IDYES == MessageBoxW(NULL,
+					L"检测到 SteamStub 保护壳，需要脱壳处理。\n\n是 - 脱壳并打补丁\n否 - 退出",
+					L"检测到保护壳", MB_YESNO | MB_ICONQUESTION))
+				{
+					Log(L"[Loader] User confirmed");
+					auto GD = [&]() { return g_KrkrExeFullPath.substr(0, g_KrkrExeFullPath.rfind(L'\\') + 1); };
+					auto BP = [&]() { auto b=g_KrkrExeFullPath; auto d=b.rfind(L'.'); return (d!=std::wstring::npos)?b.substr(0,d):b; };
+					std::wstring unp = BP() + L"_unp.exe";
+					std::wstring api = GD() + L"steam_api.dll";
+
+					Log(L"[Loader] Backing up steam_api.dll...");
+					if (GetFileAttributesW((api+L".bak").c_str()) == INVALID_FILE_ATTRIBUTES &&
+					    GetFileAttributesW(api.c_str()) != INVALID_FILE_ATTRIBUTES)
+						MoveFileW(api.c_str(), (api+L".bak").c_str());
+					CopyFileW((LdDir()+L"CxdecExtractordll\\steamapi_cra\\steam_api.dll").c_str(), api.c_str(), FALSE);
+
+					Log(L"[Loader] Unpacking...");
+					if (P(g_KrkrExeFullPath.c_str(), unp.c_str()))
+					{
+						Log(L"[Loader] Unpack OK, injecting...");
+						std::wstring dll = LdDir() + L"CxdecExtractordll\\CxdecAntiMalform.dll";
+						std::wstring cmd = L"\"" + unp + L"\"";
+						std::vector<wchar_t> cb(cmd.begin(), cmd.end()); cb.push_back(L'\0');
+
+						STARTUPINFOW si = { sizeof(si) };
+						PROCESS_INFORMATION pi = {};
+						if (CreateProcessW(unp.c_str(), cb.data(), NULL, NULL, FALSE,
+							CREATE_SUSPENDED, NULL, GD().c_str(), &si, &pi))
+						{
+							Log(L"[Loader] Process created suspended");
+							uint8_t dd[0x678] = {}; *(uint32_t*)dd = 0x678;
+							CreateDetourSection(pi.hProcess, dd, sizeof(dd));
+							Log(L"[Loader] Detour section created");
+
+							SIZE_T nb = (dll.length()+1)*sizeof(wchar_t);
+							LPVOID rp = VirtualAllocEx(pi.hProcess, NULL, nb,
+								MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+							if (rp) {
+								WriteProcessMemory(pi.hProcess, rp, dll.c_str(), nb, NULL);
+								Log(L"[Loader] DLL path written");
+								auto* LL = (LPTHREAD_START_ROUTINE)GetProcAddress(
+									GetModuleHandleW(L"kernel32.dll"), "LoadLibraryW");
+								HANDLE ht = CreateRemoteThread(pi.hProcess, NULL, 0, LL, rp, 0, NULL);
+								if (ht) { WaitForSingleObject(ht, INFINITE); CloseHandle(ht); Log(L"[Loader] DLL injected"); }
+								else Log(L"[Loader] FAIL: CreateRemoteThread");
+								VirtualFreeEx(pi.hProcess, rp, 0, MEM_RELEASE);
+							}
+							else Log(L"[Loader] FAIL: VirtualAllocEx");
+							ResumeThread(pi.hThread);
+							Log(L"[Loader] Process resumed");
+							WaitForSingleObject(pi.hProcess, INFINITE);
+							CloseHandle(pi.hProcess);
+							CloseHandle(pi.hThread);
+							DeleteFileW(unp.c_str());
+							Log(L"[Loader] Cleaned temp file");
+						}
+						else Log(L"[Loader] FAIL: CreateProcess");
+						MessageBoxW(NULL,
+							L"脱壳及补丁注入完成。\n\n"
+							L"已生成 game_crack.exe。\n"
+							L"请将 game_crack.exe 重新拖入 Loader。",
+							L"脱壳完成", MB_OK | MB_ICONINFORMATION);
+					}
+					else Log(L"[Loader] FAIL: unpack");
+				}
+				else Log(L"[Loader] User cancelled");
+				FreeLibrary(hUnp);
+				ExitProcess(0);
+			}
+			else Log(L"[Loader] Not packed or detect failed");
+			FreeLibrary(hUnp);
+		}
+		else Log(L"[Loader] Cannot load CxdecPeUnpacker.dll");
+	}
 
     if (!krkrExeFullPath.empty() && krkrExeFullPath != loaderFullPath)
     {

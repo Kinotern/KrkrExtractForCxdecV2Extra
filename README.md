@@ -39,6 +39,8 @@
 - `CxdecKeyDumper.dll`  
   运行时 Key 提取模块。用于导出 CxdecV2 / Hxv4 相关解密参数。
 
+- `ExtractorOutputRestorer`  
+  Loader 早期内置的离线资源文件名还原功能。读取 `Extractor_Output` 和 `StringHashDumper_Output`，生成 `Restored_Extractor_Output`。当前更推荐使用运行时恢复 Hash 映射模块直接在 `Extractor_Output` 中实时恢复。
 
 ## 当前功能
 
@@ -221,6 +223,12 @@ StringHashDumper_Output\FileNameHash.log
 
 发布目录使用 Loader + 模块 DLL 目录结构：
 
+- CxdecPeUnpacker.dll
+  面向特定平台发行版本，提供保护壳自动脱除处理
+
+- CxdecAntiMalform.dll
+  运行时完整性补丁模块，确保脱壳后游戏正常运行
+
 ```text
 Release\
   CxdecExtractorLoader.exe
@@ -378,3 +386,11 @@ https://www.kungal.com/topic/3596
 该链接仅作为安全风险提示和背景资料，不代表本项目对第三方仓库、作者或文件作出最终安全鉴定。对任何第三方 Release、压缩包、加壳程序或闭源可执行文件，建议优先选择源码构建、校验哈希、使用虚拟机测试，并避免在生产环境或存有敏感资料的主机上直接运行。
 
 本项目后续会继续以源码透明、可复现构建和安全自查为原则进行维护。
+
+  CxdecExtractordll/steamapi_cra/ -- 必要的运行时依赖
+
+## 构建
+
+`
+build.bat
+`

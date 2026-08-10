@@ -44,6 +44,9 @@
 - `ExtractorOutputRestorer`
   Loader 早期内置的离线资源文件名还原功能。读取 `Extractor_Output` 和 `StringHashDumper_Output`，生成 `Restored_Extractor_Output`。当前更推荐使用运行时恢复 Hash 映射模块直接在 `Extractor_Output` 中实时恢复。
 
+## 软电池游戏支持情况
+LLLJ软电池版本经过测试，软件内置的调试模式，点击弹窗后会直接进入游戏开始界面，无需处理即可开始提取任务
+
 ## 当前功能
 
 ### 1. XP3 批量解包
@@ -330,8 +333,11 @@ https://www.kungal.com/topic/3596
 - [cxdec-hxv4-static-analysis](https://github.com/hktkqj/cxdec-hxv4-static-analysis)  
   提供了 Hxv4 静态分析的完整技术文档和 Python 参考实现，本项目 CxdecKeyStatic 模块的 FilterManager 派生流程和 TJS2 解析逻辑参考了其分析成果。
 
-## 构建
 
+<<<<<<< HEAD
 ```
 build.bat
 ```
+=======
+
+>>>>>>> 18013d9ef2c965811e64d4c1c3ed255f4f908879

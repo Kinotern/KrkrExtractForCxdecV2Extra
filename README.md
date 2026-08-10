@@ -1,13 +1,13 @@
 # KrkrExtractV2 (For CxdecV2)
 
-本项目由GPT-5.5编写主要程序与DeepSeek-V4-Pro编写注释、整理和增强，面向 Wamsoft / KiriKiri Z Hxv4 2021.11+ / CxdecV2 系列加密游戏，提供一套动态分析与资源整理工具。
+本项目面向 Wamsoft / KiriKiri Z Hxv4 2021.11+ / CxdecV2 系列加密游戏，提供一套动态分析与资源整理工具。
 
 主要功能：
 
 - XP3 动态解包
 - 运行时恢复 Hash 映射提取与资源名恢复
 - Hook 撞库恢复 Hash 映射
-- 运行时 Key 参数提取
+- 静态 Key 参数提取（无需运行游戏，无需 Frida）
 - 根据 `XP3 动态解包`、`运行时恢复 Hash 映射` 和 `Hook 撞库恢复 Hash 映射` 还原资源目录名、文件名和后缀。`实测成功率在90%以上`
 
 ## 环境
@@ -21,25 +21,27 @@
 
 ## 模块说明
 
-- `CxdecExtractorLoader.exe`  
+- `CxdecExtractorLoader.exe`
   主加载器。负责启动目标游戏并注入对应模块，也内置资源文件名还原功能。
 
-- `CxdecExtractor.dll`  
+- `CxdecExtractor.dll`
   解包核心。定位游戏内部 Cxdec 接口并执行 XP3 资源提取。
 
-- `CxdecExtractorUI.dll`  
+- `CxdecExtractorUI.dll`
   XP3 批量解包界面。支持拖入多个 `*.xp3` 文件排队解包。
 
-- `CxdecStringDumper.dll`  
+- `CxdecStringDumper.dll`
   运行时恢复 Hash 映射模块。用于记录明文目录名、文件名和 Hash 的对应关系，并可实时恢复纯 Hash 解包目录。
 
-- `CxdecHashRestore.dll`  
+- `CxdecHashRestore.dll`
   Hook 撞库恢复 Hash 映射模块。用于按候选目录名、文件名批量计算 Hash，并补充 `HashRestore_RecoveredNames.lst`。
 
-- `CxdecKeyDumper.dll`  
-  运行时 Key 提取模块。用于导出 CxdecV2 / Hxv4 相关解密参数。
+- `CxdecKeyStatic.dll`（静态密钥提取库）
+  纯静态密钥提取模块。无需启动游戏、无需注入、无需 Frida/Python 等外部依赖。
+  通过分析游戏 EXE 资源（TEXT/127、STARTUP.TJS、BOOTSTRAP DLL）和 FilterManager 派生，
+  自动提取 HXV4 解密所需的完整密钥材料。
 
-- `ExtractorOutputRestorer`  
+- `ExtractorOutputRestorer`
   Loader 早期内置的离线资源文件名还原功能。读取 `Extractor_Output` 和 `StringHashDumper_Output`，生成 `Restored_Extractor_Output`。当前更推荐使用运行时恢复 Hash 映射模块直接在 `Extractor_Output` 中实时恢复。
 
 ## 当前功能
@@ -51,7 +53,7 @@
 - 提供列表状态、总进度、单文件进度、成功/失败反馈。
 - 支持自定义输出目录。
 - 支持完成弹窗和完成提示音。
-- 为了兼容宿主游戏运行时，当前采用“批量队列 + 单 worker 后台解包”模式，而不是单进程多线程并发解包。
+- 为了兼容宿主游戏运行时，当前采用"批量队列 + 单 worker 后台解包"模式，而不是单进程多线程并發解包。
 
 默认输出目录：
 
@@ -84,7 +86,7 @@
 日志格式大致为：
 
 ```text
-明文字符串##YSig##Hash
+明文字符串#YSig##Hash
 ```
 
 其中：
@@ -117,23 +119,19 @@ Hook 撞库恢复模块用于批量补充 Hash 映射。它会先打开准备窗
 
 候选表和恢复映射格式详见 [Hash 恢复模块开发文档](docs/hash-restore-workflow.md)。
 
-### 4. Key 提取
+### 4. 静态 Key 提取（CxdecKeyStatic）
 
-原生 C++ 版 Key 提取模块已经实现，不再依赖 Frida。
+**全新的纯静态方案**，完全替代旧版 Frida 动态注入方案。无需启动游戏，无需注入进程。
 
-运行方式：
+通过 Loader 的 `静态提取Key` 按钮一键运行，自动完成以下流程：
 
-- 通过 `CxdecExtractorLoader.exe` 选择 `加载Key提取模块`
-- Loader 会显示提取进度条和百分比
-- 提取完成后弹出确认框
-- 点击确认后关闭 Loader 窗口
-
-当前进度为阶段式进度：
-
-- `0%`：等待提取开始
-- `33%`：已抓到一组关键数据
-- `66%`：已抓到两组关键数据
-- `100%`：全部完成
+1. 从游戏 EXE 中提取 TEXT/127 资源，获取 bres root key
+2. 自动定位 bres salt（V2Link 标记 + TJS2100 验证）
+3. 解密 STARTUP.TJS，提取 bootstrap URL 和 prefix
+4. 解密并解压 BOOTSTRAP DLL
+5. 解析 DLL 配置表（UNIQUE、WARNING、PARAMS）
+6. LoadLibrary + FilterManager 原生调用派生 HXV4 密钥
+7. 保存为 Rust 兼容的 drip_program.json/.bin + scheme.json
 
 默认输出目录：
 
@@ -143,34 +141,28 @@ Hook 撞库恢复模块用于批量补充 Hash 映射。它会先打开准备窗
 
 输出文件：
 
-- `key_output.txt`  
-  文本格式，尽量对齐 Frida 脚本输出风格。
+| 文件 | 说明 |
+|------|------|
+| `{exe名}_scheme.json` | 完整方案：bres key、bootstrap 参数、HXV4 密钥 |
+| `{exe名}_drip_program.json` | 派生结果：hxv4_key、nonce0、nonce1、hash_key、VA 地址 |
+| `{exe名}_drip_program.bin` | DRIP 二进制格式（holder_words + context_u32 + lanes） |
+| `{exe名}_static_recover.summary.json` | 提取摘要 |
 
-- `KeyInfo.log`  
-  详细日志。
+关键提取值：
 
-- `KeyInfo.json`  
-  结构化结果。
+- `hxv4_key`：32 字节，XP3 封包主解密密钥
+- `hxv4_nonce0`：24 字节，nonce 参数 0
+- `hxv4_nonce1`：24 字节，nonce 参数 1
+- `hash_key`：32 字节，哈希密钥
+- `startup_key`：bres 资源解密 key
+- `bootstrap_key`：BOOTSTRAP DLL 解密 key
 
-- `control_block.bin`  
-  控制块数据。
+核心优势：
 
-`key_output.txt` 当前会输出：
-
-- `load ... at ...`
-- `hxpoint at ...`
-- `cxpoint at ...`
-- `* key : ...`
-- `* nonce : ...`
-- `* verify : ...`
-- `* filterkey : ...`
-- `* mask : ...`
-- `* offset : ...`
-- `* randtype : ...`
-- `* order : ...`
-- `* PrologOrder (garbro) : ...`
-- `* OddBranchOrder (garbro) : ...`
-- `* EvenBranchOrder (garbro) : ...`
+- **零依赖**：纯 C++ 实现，无需 Frida / Python / .NET 运行时
+- **离线运行**：不启动游戏，不注入进程
+- **全自动**：salt 自动定位、key 自动提取、输出格式标准化
+- **可集成**：编译为DLL（CxdecKeyStatic.dll），可通过LoadLibrary动态加载到其他项目
 
 ### 5. 离线资源文件名还原
 
@@ -222,14 +214,7 @@ StringHashDumper_Output\FileNameHash.log
 ### 准备
 
 发布目录使用 Loader + 模块 DLL 目录结构：
-
-- CxdecPeUnpacker.dll
-  面向特定平台发行版本，提供保护壳自动脱除处理
-
-- CxdecAntiMalform.dll
-  运行时完整性补丁模块，确保脱壳后游戏正常运行
-
-```text
+```
 Release\
   CxdecExtractorLoader.exe
   CxdecExtractordll\
@@ -237,15 +222,14 @@ Release\
     CxdecExtractorUI.dll
     CxdecStringDumper.dll
     CxdecHashRestore.dll
-    CxdecKeyDumper.dll
+    CxdecKeyStatic.dll
 ```
 
 Loader 会优先从自身目录下的 `CxdecExtractordll\` 子目录加载模块 DLL，便于后续继续扩展独立模块。
-
 同时确保：
 
 - 目标游戏确实是 Wamsoft / KiriKiri Z / Hxv4 / CxdecV2 系列
-- 游戏的加密认证已经移除或可以正常进入资源加载流程
+- 游戏的加壳认证已经移除或可以正常进入资源加载流程
 - 工具和游戏尽量不要放在受 UAC 严格保护的位置
 
 ### 解包 XP3
@@ -265,13 +249,12 @@ Loader 会优先从自身目录下的 `CxdecExtractordll\` 子目录加载模块
 5. 正常运行游戏，让目标逻辑和资源加载路径尽量多地触发
 6. 查看 `StringHashDumper_Output` 和 `Extractor_Output\Extractor_Log`
 
-### 提取 Key
+### 静态提取 Key
 
 1. 把游戏主程序拖到 `CxdecExtractorLoader.exe`
-2. 点击 `加载Key提取模块`
-3. 等待 Loader 中的进度条走到 `100%`
-4. 确认完成提示
-5. 查看 `ExtractKey_Output`
+2. 点击 `静态提取Key`
+3. 等待弹出"Key 提取成功"提示
+4. 查看 `ExtractKey_Output`
 
 ### 还原资源文件名
 
@@ -292,7 +275,6 @@ msbuild KrkrZCxdecV2.sln /p:Configuration=Release /p:Platform=x86 /m
 ```
 
 生成结果位于：
-
 ```text
 Release\
   CxdecExtractorLoader.exe
@@ -301,81 +283,36 @@ Release\
     CxdecExtractorUI.dll
     CxdecStringDumper.dll
     CxdecHashRestore.dll
-    CxdecKeyDumper.dll
+    CxdecKeyStatic.dll
 ```
 
 也可以直接使用 PowerShell 调用 MSBuild：
 
 ```powershell
-& 'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe' 'O:\Github\KrkrExtractForCxdecV2Extra\KrkrZCxdecV2.sln' /p:Configuration=Release /p:Platform=x86 /m
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe' 'O:\Github\KrkrExtractForCxdecV2Extra\cangku\KrkrExtractForCxdecV2Extra\KrkrZCxdecV2.sln' /p:Configuration=Release /p:Platform=x86 /m
 ```
-
-如果需要清理 Debug 目录下的链接副产物：
-
-```cmd
-del /q "O:\Github\KrkrExtractForCxdecV2Extra\Debug\*.exp" "O:\Github\KrkrExtractForCxdecV2Extra\Debug\*.lib" "O:\Github\KrkrExtractForCxdecV2Extra\Debug\*.pdb"
-```
-
-上传 GitHub 前建议确认：
-
-- 不提交 `Debug/`、`Release/`、`.vs/` 等编译目录。
-- 文本文件末尾保留换行。
-- 工程使用 `/utf-8` 编译，中文文本直接保存为 UTF-8。
-- 重新执行一次 `Release|x86` 编译，确认 `0 个警告，0 个错误`。
 
 ## 已知限制
 
-- XP3 批量解包是队列化串行执行，不支持单进程内并发解包。
+- XP3 批量解包是队列化串行执行，不支持单进程内并發解包。
 - 纯 Hash 封包本身不包含明文文件名，解包结果默认仍是 Hash 目录和 Hash 文件名。
 - 运行时恢复 Hash 映射无法保证一次性覆盖游戏内所有路径和文件名，是否能抓到取决于运行路径。
 - Hook 撞库恢复依赖候选表质量；候选名越接近真实资源路径，补充效果越好。
 - 资源文件名还原依赖 `DirectoryHash.log`、`FileNameHash.log` 和 `HashRestore_RecoveredNames.lst` 的完整度。
 - 若复制失败，可能与路径过长、非法文件名、文件占用或权限有关。
+- **静态 Key 提取**：RVA 常量（0x0E2D0 等）为当前分析的游戏样本值，不同游戏版本可能需要调整 `GameParams` 中的 RVA 参数。
 
 ## 同类工具参考
 
-- [KrkrDump](https://github.com/crskycode/KrkrDump)  
-  动态导出思路，适合部分需要运行时配合的场景。
-
-- [GARbro](https://github.com/crskycode/GARbro)  
+- [GARbro](https://github.com/crskycode/GARbro)
   静态通用工具，面对 Hxv4 / Cxdec 目标时通常需要额外 key 和手工配置。
 
-- [GARbro2](https://github.com/UserUnknownFactor/GARbro2)  
+- [GARbro2](https://github.com/UserUnknownFactor/GARbro2)
   静态工具，适合配合 key 使用，配置上通常比 GARbro 更直接一些。
-
-- [krkr_hxv4_dumpkey.js](https://github.com/YuriSizuku/GalgameReverse/blob/master/project/krkr/src/krkr_hxv4_dumpkey.js)  
-  Frida 脚本，适合做原始 key 抓取和结果对照。本项目已经内置原生 Key 提取模块，但该脚本仍有参考价值。
-
-## 相关文档
-
-- [XP3 纯 Hash 解包技术分析](docs/xp3-pure-hash-analysis.md)
-- [Hash 恢复模块开发文档](docs/hash-restore-workflow.md)
-
-## 常见问题
-
-### 为什么解包结果没有明文文件名？
-
-因为纯 Hash 封包内部本身不保存明文文件名。解包模块只能从封包索引里拿到目录 Hash 和文件名 Hash。要还原明文名称，需要配合运行时恢复 Hash 映射模块。
-
-### 为什么还原后仍有文件缺失？
-
-通常是因为运行时没有收集到对应文件名 Hash。可以重新加载运行时恢复 Hash 映射模块，并在游戏中触发更多资源加载路径。
-
-### 为什么批量解包不是多线程并发？
-
-底层依赖宿主游戏运行时接口，单进程并发调用容易导致宿主崩溃。当前方案优先保证稳定性。
-
-### Key 提取为什么做成原生 DLL，而不是 Frida？
-
-为了避免额外依赖 Frida / Python / Node 运行环境，也方便直接集成进现有 Loader 工作流。
-
-### 兼容 Win7 以外的系统吗？
-
-理论上兼容更高版本 Windows。当前工程以 x86 目标和 Visual Studio 2022 配置为准。
 
 ## 免责声明
 
-本项目仅用于学习研究、兼容性分析、个人合法备份、汉化与资源修复等合规场景。请勿将本项目用于侵犯版权、绕过授权、传播商业游戏资源、牟利分发或其他违反当地法律法规的用途。使用者应自行确认其使用行为具备合法授权，并自行承担由使用、修改、编译或分发本项目产生的风险与责任。
+本项目仅用于学习研究、兼容性分析、个人合法备份、汉化与资源修复等合规场景。请勿将本项目用于侵犯版权、绕过授权、传播商业游戏资源、盗利分发或其他违反当地法律法规的用途。使用者应自行确认其使用行为具备合法授权，并自行承担由使用、修改、编译或分发本项目产生的风险与责任。
 
 本项目不提供商业游戏资源、解密后的成品资源或任何第三方专有内容。仓库只发布源码和必要的工程文件；如需使用可执行文件，建议使用者自行从源码编译，并在运行前使用可信安全软件或沙箱环境进行检查。
 
@@ -387,10 +324,14 @@ https://www.kungal.com/topic/3596
 
 本项目后续会继续以源码透明、可复现构建和安全自查为原则进行维护。
 
-  CxdecExtractordll/steamapi_cra/ -- 必要的运行时依赖
+
+## 致谢
+
+- [cxdec-hxv4-static-analysis](https://github.com/hktkqj/cxdec-hxv4-static-analysis)  
+  提供了 Hxv4 静态分析的完整技术文档和 Python 参考实现，本项目 CxdecKeyStatic 模块的 FilterManager 派生流程和 TJS2 解析逻辑参考了其分析成果。
 
 ## 构建
 
-`
+```
 build.bat
-`
+```

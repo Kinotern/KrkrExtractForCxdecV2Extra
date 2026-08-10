@@ -11,6 +11,7 @@
 #define IDC_KeyProgressText             1005
 #define IDC_KeyProgressLabel            1006
 #define IDC_HashRestore                 1007
+#define IDC_KeyDumper                   1003
 
 // Next default values for new objects
 // 

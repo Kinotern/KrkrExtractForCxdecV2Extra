@@ -1,0 +1,30 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="BresDecrypt.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="BootstrapExtract.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="CxdecRecover.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="FilterManager.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="PeResource.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="Tjs2Decompile.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="Crypto\ChaCha.cpp"><Filter>Crypto</Filter></ClCompile>
+    <ClCompile Include="Crypto\Keccak.cpp"><Filter>Crypto</Filter></ClCompile>
+    <ClCompile Include="Crypto\ZlibInflate.cpp"><Filter>Crypto</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="BresDecrypt.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="BootstrapExtract.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="CxdecRecover.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="FilterManager.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="PeResource.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="Tjs2Decompile.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="Crypto\ChaCha.h"><Filter>Crypto</Filter></ClInclude>
+    <ClInclude Include="Crypto\Keccak.h"><Filter>Crypto</Filter></ClInclude>
+    <ClInclude Include="Crypto\ZlibInflate.h"><Filter>Crypto</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files" />
+    <Filter Include="Source Files" />
+    <Filter Include="Crypto" />
+  </ItemGroup>
+</Project>

@@ -334,7 +334,6 @@ https://www.kungal.com/topic/3596
   提供了 Hxv4 静态分析的完整技术文档和 Python 参考实现，本项目 CxdecKeyStatic 模块的 FilterManager 派生流程和 TJS2 解析逻辑参考了其分析成果。
 
 
-<<<<<<< HEAD
 ```
 build.bat
 ```

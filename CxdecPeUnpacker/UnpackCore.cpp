@@ -107,7 +107,6 @@ bool UnpackEngine::Step2_DecodePayload() {
 // Step 3: 提取并 XTEA 解密平台驱动 DLL
 bool UnpackEngine::Step3_DumpPlatformDriver() {
     Log(L"  Step 3 - 提取平台驱动...");
-    if (m_header.Flags & PackFlags::NoDriver) { Log(L"  --> 无驱动"); return true; }
     if (!m_header.DrvDllSize) { Log(L"  --> 驱动大小为 0"); return true; }
 
     uint32_t doff = m_bindStartOffset + m_header.DrvDllOffset;
@@ -128,13 +127,15 @@ bool UnpackEngine::Step4_HandleBindSection() {
     return true;
 }
 
-// Step 5: AES-256-CBC 解密代码段
+// Step 5: AES-256-CBC 解密代码段（NoEncryption 标志置位时跳过）
 bool UnpackEngine::Step5_DecryptCodeSection() {
     Log(L"  Step 5 - AES 解密代码段...");
     auto* cs = m_reader.SectionHeader(".text");
     if (!cs) { m_lastError = L"未找到 .text 节"; return false; }
-    if (m_header.Flags & PackFlags::EncryptedCodeSec) {
-        m_lastError = L"代码段未加密"; return false;
+
+    if (m_header.Flags & PackFlags::NoEncryption) {
+        Log(L"  --> 代码段未加密，跳过解密");
+        return true;
     }
 
     uint32_t coff = cs->PointerToRawData;

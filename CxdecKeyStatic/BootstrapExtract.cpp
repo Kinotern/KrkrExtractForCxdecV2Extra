@@ -1,6 +1,7 @@
 #include "BootstrapExtract.h"
 #include "BresDecrypt.h"
 #include "Crypto/ZlibInflate.h"
+#include "PeResource.h"
 #include <cstring>
 #include <cstdio>
 
@@ -81,17 +82,24 @@ BootstrapConfig extract_bootstrap(
         return cfg;
 
     const uint32_t TABLE_RVA = 0x80E38;
-    const uint32_t TABLE_FILE_OFF = TABLE_RVA - 0xC00;
+    uint32_t table_file_off = PeResource::rva_to_file_offset(
+        cfg.dll_data.data(), cfg.dll_data.size(), TABLE_RVA);
+    if (table_file_off == UINT32_MAX) {
+        cfg.ok = false;
+        return cfg;
+    }
     parse_config_table(cfg.dll_data.data(), cfg.dll_data.size(),
-                        TABLE_FILE_OFF, cfg.unique, cfg.warning, cfg.params);
+                        table_file_off, cfg.unique, cfg.warning, cfg.params);
 
     if (cfg.unique.empty()) {
         cfg.ok = false;
         return cfg;
     }
 
-    uint32_t seed_file_off = archive_seed_rva > 0 ? (archive_seed_rva - 0xC00) : 0;
-    if (seed_file_off > 0 && seed_file_off + 8 <= cfg.dll_data.size()) {
+    uint32_t seed_file_off = archive_seed_rva > 0
+        ? PeResource::rva_to_file_offset(cfg.dll_data.data(), cfg.dll_data.size(), archive_seed_rva)
+        : 0;
+    if (seed_file_off != UINT32_MAX && seed_file_off > 0 && seed_file_off + 8 <= cfg.dll_data.size()) {
         cfg.archive_seed =
             (uint64_t)cfg.dll_data[seed_file_off]
           | ((uint64_t)cfg.dll_data[seed_file_off + 1] << 8)

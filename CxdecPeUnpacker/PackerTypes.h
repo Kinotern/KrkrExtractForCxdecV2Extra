@@ -35,10 +35,9 @@ struct PackShellHeader {
 
 #pragma pack(pop)
 
-// DRM 标志位
+// DRM 标志位（SteamStub V3.1 的 Flags 字段）
 namespace PackFlags {
-    constexpr uint32_t NoDriver         = 0x04;
-    constexpr uint32_t EncryptedCodeSec = 0x08;
+    constexpr uint32_t NoEncryption = 0x04;  // 代码段未加密
 }
 
 // 检测结果

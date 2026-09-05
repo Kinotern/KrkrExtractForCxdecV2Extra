@@ -64,26 +64,65 @@ struct ResDataEntry {
 static const uint32_t RES_DIR_FLAG = 0x80000000;
 static const uint32_t RES_NAME_FLAG = 0x80000000;
 
-// 使用节表将RVA转换为文件偏移
-static uint32_t rva_to_offset(const uint8_t* pe, uint32_t rva) {
-    auto* dos = (const DosHeader*)pe;
-    auto* fh  = (const FileHeader*)(pe + dos->e_lfanew + 4);
-    auto* oh  = (const OptionalHeader*)(pe + dos->e_lfanew + 4 + sizeof(FileHeader));
-    auto* sections = (const SectionHeader*)((const uint8_t*)oh + fh->SizeOfOptionalHeader);
+// PE 头解析结果。
+struct PeHeaders {
+    const FileHeader* file_header;
+    const OptionalHeader* optional_header;
+    const SectionHeader* sections;
+    size_t section_count;
+};
 
-    for (int i = 0; i < fh->NumberOfSections; ++i) {
-        if (rva >= sections[i].VirtualAddress &&
-            rva < sections[i].VirtualAddress + sections[i].VirtualSize) {
-            return sections[i].PointerToRawData + (rva - sections[i].VirtualAddress);
+// 解析 PE 头与节表，任何越界都返回 false。
+static bool parse_pe_headers(const uint8_t* pe, size_t pe_size, PeHeaders& out) {
+    if (!pe || pe_size < sizeof(DosHeader)) return false;
+    auto* dos = (const DosHeader*)pe;
+    if (dos->magic[0] != 'M' || dos->magic[1] != 'Z') return false;
+
+    size_t fh_off = (size_t)dos->e_lfanew + 4;
+    if (fh_off + sizeof(FileHeader) > pe_size) return false;
+    auto* fh = (const FileHeader*)(pe + fh_off);
+
+    size_t oh_off = fh_off + sizeof(FileHeader);
+    if (oh_off + fh->SizeOfOptionalHeader > pe_size) return false;
+    auto* oh = (const OptionalHeader*)(pe + oh_off);
+
+    size_t sec_off = oh_off + fh->SizeOfOptionalHeader;
+    size_t sec_count = fh->NumberOfSections;
+    if (sec_off + sec_count * sizeof(SectionHeader) > pe_size) return false;
+
+    out.file_header = fh;
+    out.optional_header = oh;
+    out.sections = (const SectionHeader*)(pe + sec_off);
+    out.section_count = sec_count;
+    return true;
+}
+
+uint32_t rva_to_file_offset(const uint8_t* pe, size_t pe_size, uint32_t rva) {
+    PeHeaders h{};
+    if (!parse_pe_headers(pe, pe_size, h)) return UINT32_MAX;
+
+    for (size_t i = 0; i < h.section_count; ++i) {
+        uint32_t vsize = h.sections[i].VirtualSize;
+        if (vsize == 0) vsize = h.sections[i].SizeOfRawData;
+        if (rva >= h.sections[i].VirtualAddress && rva < h.sections[i].VirtualAddress + vsize) {
+            return h.sections[i].PointerToRawData + (rva - h.sections[i].VirtualAddress);
         }
     }
-    return 0;  // RVA not in any section (may be in header)
+    return UINT32_MAX;
+}
+
+uint32_t read_image_base(const uint8_t* pe, size_t pe_size) {
+    PeHeaders h{};
+    if (!parse_pe_headers(pe, pe_size, h)) return 0;
+    // PE32 OptionalHeader 的 ImageBase 位于其偏移 28 处。
+    if (h.file_header->SizeOfOptionalHeader < 32) return 0;
+    return *(const uint32_t*)((const uint8_t*)h.optional_header + 28);
 }
 
 // Find a resource by walking the 3-level tree: Type 鈫?Name 鈫?Language.
 // 返回(data_ptr, data_size)对，未找到则返回(nullptr, 0)。
 static std::pair<const uint8_t*, uint32_t> find_resource(
-    const uint8_t* pe, const ResDir* root,
+    const uint8_t* pe, size_t pe_size, const ResDir* root,
     bool type_is_name, const wchar_t* type_name, uint16_t type_id,
     bool name_is_name, const wchar_t* res_name, uint16_t res_id) {
     auto entries = (const ResDirEntry*)(root + 1);
@@ -142,7 +181,8 @@ static std::pair<const uint8_t*, uint32_t> find_resource(
     if (lv3_entries[0].OffsetToData & RES_DIR_FLAG) return {nullptr, 0};
 
     auto* data_entry = (const ResDataEntry*)((const uint8_t*)lv3 + lv3_entries[0].OffsetToData);
-    uint32_t file_off = rva_to_offset(pe, data_entry->OffsetToData);
+    uint32_t file_off = rva_to_file_offset(pe, pe_size, data_entry->OffsetToData);
+    if (file_off == UINT32_MAX) return {nullptr, 0};
     return {pe + file_off, data_entry->Size};
 }
 
@@ -159,8 +199,8 @@ static const ResDir* get_resource_root(const uint8_t* pe, size_t pe_size) {
     uint32_t res_sz  = oh->DataDir[2].Size;
     if (res_rva == 0 || res_sz == 0) return nullptr;
 
-    uint32_t res_off = rva_to_offset(pe, res_rva);
-    if (res_off == 0) return nullptr;
+    uint32_t res_off = rva_to_file_offset(pe, pe_size, res_rva);
+    if (res_off == UINT32_MAX) return nullptr;
 
     return (const ResDir*)(pe + res_off);
 }
@@ -176,7 +216,7 @@ std::vector<uint8_t> read_rcdata(const uint8_t* pe_data, size_t pe_size,
     for (size_t i = 0; i < nlen; ++i) wname[i] = (wchar_t)(unsigned char)name[i];
     wname[nlen] = 0;
 
-    auto [ptr, sz] = find_resource(pe_data, root,
+    auto [ptr, sz] = find_resource(pe_data, pe_size, root,
                                     false, nullptr, 10,
                                     true, wname.data(), 0);
 
@@ -198,7 +238,7 @@ std::vector<uint8_t> read_custom_resource(const uint8_t* pe_data, size_t pe_size
     for (size_t i = 0; i < tlen; ++i) wtype[i] = (wchar_t)(unsigned char)type[i];
     wtype[tlen] = 0;
 
-    auto [ptr, sz] = find_resource(pe_data, root,
+    auto [ptr, sz] = find_resource(pe_data, pe_size, root,
                                     true, wtype.data(), 0,
                                     false, nullptr, id);
 
@@ -210,7 +250,6 @@ std::vector<uint8_t> read_custom_resource(const uint8_t* pe_data, size_t pe_size
 }
 
 } // namespace PeResource
-#include "PeResource.h"
 #include <windows.h>
 #include <fstream>
 

@@ -21,11 +21,23 @@ static std::wstring utf8_to_wide(const std::string& s) {
     return out;
 }
 
+static void EnsureOutputDirectory(const std::wstring& path) {
+    if (path.empty()) return;
+    if (CreateDirectoryW(path.c_str(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS) return;
+    size_t pos = path.find_last_of(L"\\/");
+    if (pos != std::wstring::npos && pos > 0) {
+        EnsureOutputDirectory(path.substr(0, pos));
+        CreateDirectoryW(path.c_str(), nullptr);
+    }
+}
+
 // --- 自动检测salt候选 ---
 
 static std::vector<size_t> find_salt_candidates(const uint8_t* data, size_t size,
                                                   size_t salt_size) {
     std::vector<size_t> candidates;
+    uint32_t image_base = PeResource::read_image_base(data, size);
+    if (image_base == 0) image_base = 0x400000;
 
     // 1) V2Link标记：salt在标记前salt_size字节处
     const char marker[] = "V2Link";
@@ -57,7 +69,7 @@ static std::vector<size_t> find_salt_candidates(const uint8_t* data, size_t size
                              | ((uint32_t)data[pos+7] << 8)
                              | ((uint32_t)data[pos+8] << 16)
                              | ((uint32_t)data[pos+9] << 24);
-            if (salt_va < 0x400000) continue;
+            if (salt_va < image_base) continue;
 
             size_t limit = (pos + 64 < size) ? (pos + 64) : size;
             for (size_t j = pos + 10; j + 5 <= limit; ++j) {
@@ -67,9 +79,11 @@ static std::vector<size_t> find_salt_candidates(const uint8_t* data, size_t size
                                     | ((uint32_t)data[j+8] << 16)
                                     | ((uint32_t)data[j+9] << 24);
                     if (sz_val == (uint32_t)salt_size) {
-                        uint32_t salt_rva = salt_va - 0x400000;
-                        if (salt_rva + salt_size <= size)
-                            candidates.push_back(salt_rva);
+                        uint32_t salt_rva = salt_va - image_base;
+                        uint32_t salt_off = PeResource::rva_to_file_offset(data, size, salt_rva);
+                        if (salt_off == UINT32_MAX) continue;
+                        if (salt_off + salt_size <= size)
+                            candidates.push_back(salt_off);
                         break;
                     }
                 }
@@ -178,6 +192,8 @@ bool recover_drip_program(const std::wstring& exe_path,
                            const GameParams& params,
                            std::string* error_out) {
 #define FAIL(msg) do { if (error_out) *error_out = (msg); return false; } while(0)
+
+    EnsureOutputDirectory(output_dir);
 
     // 1. 将整个EXE读入内存
     std::vector<uint8_t> exe_data;
@@ -511,6 +527,30 @@ bool recover_drip_program(const std::wstring& exe_path,
         write_hex(fj, prog.hxv4_nonce1.data(), 24);
         fprintf(fj, "\",\n");
         fprintf(fj, "  \"source_module\": \"bootstrap.dll\",\n");
+        fprintf(fj, "  \"holder_words\": [");
+        for (int hwi = 0; hwi < 6; ++hwi) {
+            if (hwi > 0) fprintf(fj, ",");
+            fprintf(fj, "%u", prog.holder_words[hwi]);
+        }
+        fprintf(fj, "],\n");
+        fprintf(fj, "  \"context_u32\": [");
+        for (size_t ci = 0; ci < prog.context_u32.size(); ++ci) {
+            if (ci > 0) fprintf(fj, ",");
+            fprintf(fj, "%u", prog.context_u32[ci]);
+        }
+        fprintf(fj, "],\n");
+        fprintf(fj, "  \"lanes\": [\n");
+        for (size_t li = 0; li < prog.lanes.size(); ++li) {
+            if (li > 0) fprintf(fj, ",\n");
+            fprintf(fj, "    {\"index\": %zu, \"records\": [", li);
+            const auto& lane = prog.lanes[li];
+            for (size_t ri = 0; ri < lane.size(); ++ri) {
+                if (ri > 0) fprintf(fj, ",");
+                fprintf(fj, "[%u,%u]", lane[ri].first, lane[ri].second);
+            }
+            fprintf(fj, "]}");
+        }
+        fprintf(fj, "\n  ],\n");
         fprintf(fj, "  \"manager_va\": %zu\n", prog.manager_va);
         fprintf(fj, "}\n");
         fclose(fj);
@@ -532,8 +572,14 @@ bool recover_drip_program(const std::wstring& exe_path,
             fwrite(prog.holder_words.data(), 4, 6, fb);
             if (ctx_count > 0) fwrite(prog.context_u32.data(), 4, ctx_count, fb);
             for (auto& lane : prog.lanes) {
-                uint32_t rc = 0;
-                fwrite(&rc, 4, 1, fb);
+                uint32_t rcount = (uint32_t)lane.size();
+                fwrite(&rcount, 4, 1, fb);
+                for (auto& rec : lane) {
+                    uint32_t param = rec.first;
+                    uint32_t callback = rec.second;
+                    fwrite(&param, 4, 1, fb);
+                    fwrite(&callback, 4, 1, fb);
+                }
             }
             fclose(fb);
         }
@@ -559,6 +605,8 @@ bool recover_drip_program(const std::wstring& exe_path,
             fclose(fs);
         }
     }
+
+    return true;
 
 #undef FAIL
 }

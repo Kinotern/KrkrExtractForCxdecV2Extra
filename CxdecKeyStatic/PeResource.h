@@ -29,4 +29,10 @@ std::vector<uint8_t> read_custom_resource(const wchar_t* exe_path,
 /// 从PE文件的给定文件偏移读取原始字节。
 std::vector<uint8_t> read_raw_offset(const wchar_t* exe_path, uint32_t offset, size_t size);
 
+/// 使用节表将 RVA 转换为文件偏移，失败返回 UINT32_MAX。
+uint32_t rva_to_file_offset(const uint8_t* pe_data, size_t pe_size, uint32_t rva);
+
+/// 读取 PE32 的 ImageBase，失败返回 0。
+uint32_t read_image_base(const uint8_t* pe_data, size_t pe_size);
+
 } // namespace PeResource

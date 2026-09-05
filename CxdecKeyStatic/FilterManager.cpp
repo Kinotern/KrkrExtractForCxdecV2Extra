@@ -112,7 +112,15 @@ DripProgram derive_drip_program(
         uint64_t loaded_seed = 0;
         if (!IsBadReadPtr(seed_ptr, 8))
             loaded_seed = *(uint64_t*)seed_ptr;
-        if (loaded_seed != 0) archive_seed = loaded_seed;
+        if (loaded_seed != 0) {
+            archive_seed = loaded_seed;
+        } else {
+            // 回退：ArchiveUpdate 默认 seed（0x2CAFEACE,0xDEADBEEF 按小端组合）
+            uint8_t default_seed[8] = { 0xCE, 0xEA, 0xAF, 0x2C, 0xEF, 0xBE, 0xAD, 0xDE };
+            archive_seed = 0;
+            for (int i = 0; i < 8; ++i)
+                archive_seed |= (uint64_t)default_seed[i] << (i * 8);
+        }
     }
 
     prog.source_module = dll_path;

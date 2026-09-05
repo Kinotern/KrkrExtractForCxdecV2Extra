@@ -831,6 +831,45 @@ namespace
 
         SetProgressPercentText(hwnd, percent);
     }
+
+    void RunStaticKeyExtraction(HWND hwnd)
+    {
+        if (g_KrkrExeFullPath.empty())
+        {
+            ::MessageBoxW(hwnd, L"未指定游戏 EXE，请先把游戏 EXE 拖到 Loader 上。", L"CxdecExtractorLoader", MB_OK | MB_ICONERROR);
+            return;
+        }
+
+        std::wstring keyStaticDll = GetModuleDllPath(L"CxdecKeyStatic.dll");
+        HMODULE hKeyStatic = ::LoadLibraryW(keyStaticDll.c_str());
+        if (!hKeyStatic)
+        {
+            ::MessageBoxW(hwnd, FormatString(L"无法加载静态提取模块：\r\n%s", keyStaticDll.c_str()).c_str(), L"CxdecExtractorLoader", MB_OK | MB_ICONERROR);
+            return;
+        }
+
+        auto extractKey = (BOOL(__stdcall*)(const wchar_t*, const wchar_t*, char*, int))::GetProcAddress(hKeyStatic, "ExtractKey");
+        if (!extractKey)
+        {
+            ::FreeLibrary(hKeyStatic);
+            ::MessageBoxW(hwnd, L"静态提取模块缺少 ExtractKey 导出接口。", L"CxdecExtractorLoader", MB_OK | MB_ICONERROR);
+            return;
+        }
+
+        std::wstring staticOutput = CombinePathLocal(g_KrkrExeDirectory, L"ExtractKey_Output\\Static");
+        char errorBuf[2048]{};
+        BOOL ok = extractKey(g_KrkrExeFullPath.c_str(), staticOutput.c_str(), errorBuf, sizeof(errorBuf));
+        ::FreeLibrary(hKeyStatic);
+
+        if (ok)
+        {
+            ::MessageBoxW(hwnd, FormatString(L"静态提取完成。\r\n输出目录：%s", staticOutput.c_str()).c_str(), L"CxdecExtractorLoader", MB_OK | MB_ICONINFORMATION);
+        }
+        else
+        {
+            ::MessageBoxA(hwnd, errorBuf[0] ? errorBuf : "Unknown error", "CxdecExtractorLoader", MB_OK | MB_ICONERROR);
+        }
+    }
 }
 
 INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -885,9 +924,11 @@ INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                     ::SetEnvironmentVariableW(RuntimeHashTargetDirectoryEnvName, runtimeHashTargetDirectory.c_str());
                     injectDllFileName = L"CxdecStringDumper.dll";
                     break;
-                case IDC_KeyDumper:
+                case IDC_KeyStatic:
+                    // 先静态提取完整 Key，再动态提取补充部分 Key。
+                    RunStaticKeyExtraction(hwnd);
                     injectDllFileName = L"CxdecKeyDumper.dll";
-                    // Key 提取是异步分阶段完成的，loader 需要继续存活来展示进度。
+                    // 动态提取是异步分阶段完成的，loader 需要继续存活来展示进度。
                     shouldCloseLoaderAfterLaunch = false;
                     break;
                 case IDC_HashRestore:

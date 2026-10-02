@@ -6,13 +6,11 @@
 #define IDD_MainForm                    102
 #define IDC_Extractor                   1001
 #define IDC_StringDumper                1002
-#define IDC_KeyDumper                   1003
 #define IDC_KeyProgress                 1004
 #define IDC_KeyProgressText             1005
 #define IDC_KeyProgressLabel            1006
 #define IDC_HashRestore                 1007
 #define IDC_KeyStatic                   1008
-#define IDC_KeyHint                     1009
 
 // Next default values for new objects
 // 

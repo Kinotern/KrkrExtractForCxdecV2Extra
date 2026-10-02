@@ -61,6 +61,8 @@ namespace
     constexpr int IDC_HOOK_RESCAN = 3112;
     constexpr int IDC_HOOK_SUMMARY = 3113;
     constexpr int IDC_HOOK_START = 3114;
+    constexpr int IDC_HOOK_HINT_BASE = 3200;
+    constexpr int IDC_HOOK_HINT_COUNT = 8;
 
     struct HookHashRestoreLaunchOptions
     {
@@ -468,7 +470,7 @@ namespace
         return text;
     }
 
-    HFONT CreateLoaderUiFont(HWND hwnd)
+    HFONT CreateLoaderUiFont(HWND hwnd, int pointSize = 9, bool bold = false)
     {
         HDC dc = ::GetDC(hwnd);
         int dpiY = dc ? ::GetDeviceCaps(dc, LOGPIXELSY) : 96;
@@ -476,7 +478,7 @@ namespace
         {
             ::ReleaseDC(hwnd, dc);
         }
-        return ::CreateFontW(-::MulDiv(9, dpiY, 72), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        return ::CreateFontW(-::MulDiv(pointSize, dpiY, 72), 0, 0, 0, bold ? FW_SEMIBOLD : FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
     }
@@ -487,32 +489,71 @@ namespace
         return TRUE;
     }
 
-    std::wstring BuildHookSummary(const HookHashRestoreLaunchOptions& options)
+    std::wstring BuildHookStatus(const HookHashRestoreLaunchOptions& options)
     {
-        return FormatString(L"纯Hash目录：%s\r\n"
-                            L"补充lst映射：%s\r\n"
-                            L"游戏主程序：%s\r\n"
-                            L"游戏目录：%s\r\n"
-                            L"Hash输出目录：%s\r\n"
-                            L"候选目录表：%s%s\r\n"
-                            L"候选文件表：%s%s\r\n"
-                            L"阶段：准备就绪。点击“开始撞库”后才启动游戏并注入 CxdecHashRestore.dll。",
-                            options.PureHashDirectory.empty() ? L"未选择" : options.PureHashDirectory.c_str(),
-                            options.SupplementalMapPath.empty() ? L"未选择（可选）" : options.SupplementalMapPath.c_str(),
-                            g_KrkrExeFullPath.c_str(),
-                            g_KrkrExeDirectory.c_str(),
-                            options.OutputDirectory.empty() ? L"未选择" : options.OutputDirectory.c_str(),
-                            options.DirsPath.empty() ? L"未选择" : options.DirsPath.c_str(),
-                            options.DirsPath.empty() ? L"" : FormatString(L"（%u 行）", CountTextLines(options.DirsPath)).c_str(),
-                            options.FilesPath.empty() ? L"未选择" : options.FilesPath.c_str(),
-                            options.FilesPath.empty() ? L"" : FormatString(L"（%u 行）", CountTextLines(options.FilesPath)).c_str());
+        std::wstring missing;
+        auto addMissing = [&missing](const wchar_t* name)
+        {
+            if (!missing.empty())
+            {
+                missing += L"、";
+            }
+            missing += name;
+        };
+
+        if (options.PureHashDirectory.empty())
+        {
+            addMissing(L"纯Hash目录");
+        }
+        if (options.OutputDirectory.empty())
+        {
+            addMissing(L"Hash输出目录");
+        }
+        if (options.DirsPath.empty() && options.FilesPath.empty())
+        {
+            addMissing(L"候选表");
+        }
+
+        std::wstring status;
+        if (missing.empty())
+        {
+            status = L"状态：就绪，可以开始撞库。";
+        }
+        else
+        {
+            status = L"状态：还缺 " + missing + L"，补齐后才能开始。";
+        }
+
+        status += L"\r\n游戏主程序：";
+        status += g_KrkrExeFullPath;
+
+        if (!options.DirsPath.empty() || !options.FilesPath.empty())
+        {
+            status += L"\r\n候选表：目录 ";
+            status += options.DirsPath.empty() ? std::wstring(L"未选择")
+                                               : FormatString(L"%u 项", CountTextLines(options.DirsPath));
+            status += L"  /  文件 ";
+            status += options.FilesPath.empty() ? std::wstring(L"未选择")
+                                                : FormatString(L"%u 项", CountTextLines(options.FilesPath));
+        }
+
+        if (!options.SupplementalMapPath.empty())
+        {
+            status += L"\r\n补充映射：";
+            status += GetFileNameLocal(options.SupplementalMapPath);
+        }
+
+        return status;
     }
 
     struct HookDialogContext
     {
         HookHashRestoreLaunchOptions Options;
         bool Accepted;
+        bool StatusReady;
         HFONT Font;
+        HFONT BoldFont;
+        HWND StepLabels[4];
     };
 
     void RefreshHookDialog(HWND hwnd, HookDialogContext* context)
@@ -527,7 +568,12 @@ namespace
         ::SetWindowTextW(::GetDlgItem(hwnd, IDC_HOOK_SUPPLEMENT_EDIT), context->Options.SupplementalMapPath.c_str());
         ::SetWindowTextW(::GetDlgItem(hwnd, IDC_HOOK_DIRS_EDIT), context->Options.DirsPath.c_str());
         ::SetWindowTextW(::GetDlgItem(hwnd, IDC_HOOK_FILES_EDIT), context->Options.FilesPath.c_str());
-        ::SetWindowTextW(::GetDlgItem(hwnd, IDC_HOOK_SUMMARY), BuildHookSummary(context->Options).c_str());
+
+        context->StatusReady = !context->Options.PureHashDirectory.empty()
+                            && !context->Options.OutputDirectory.empty()
+                            && (!context->Options.DirsPath.empty() || !context->Options.FilesPath.empty());
+        ::SetWindowTextW(::GetDlgItem(hwnd, IDC_HOOK_SUMMARY), BuildHookStatus(context->Options).c_str());
+        ::InvalidateRect(::GetDlgItem(hwnd, IDC_HOOK_SUMMARY), nullptr, TRUE);
     }
 
     LRESULT CALLBACK HookHashDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -540,38 +586,113 @@ namespace
                 CREATESTRUCTW* create = (CREATESTRUCTW*)lParam;
                 context = (HookDialogContext*)create->lpCreateParams;
                 ::SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)context);
-                context->Font = CreateLoaderUiFont(hwnd);
+                context->Font = CreateLoaderUiFont(hwnd, 9, false);
+                context->BoldFont = CreateLoaderUiFont(hwnd, 10, true);
+                for (HWND& label : context->StepLabels)
+                {
+                    label = nullptr;
+                }
 
-                CreateWindowW(L"STATIC", L"纯Hash目录：", WS_CHILD | WS_VISIBLE | SS_LEFT, 18, 18, 95, 18, hwnd, nullptr, nullptr, nullptr);
-                CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 120, 15, 610, 23, hwnd, (HMENU)IDC_HOOK_PURE_EDIT, nullptr, nullptr);
-                CreateWindowW(L"BUTTON", L"浏览", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 740, 14, 70, 25, hwnd, (HMENU)IDC_HOOK_PURE_BROWSE, nullptr, nullptr);
+                const int kEditX = 222;
+                const int kEditW = 524;
+                const int kBrowseX = 754;
+                const int kBrowseW = 94;
 
-                CreateWindowW(L"STATIC", L"Hash输出目录：", WS_CHILD | WS_VISIBLE | SS_LEFT, 18, 52, 95, 18, hwnd, nullptr, nullptr, nullptr);
-                CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 120, 49, 610, 23, hwnd, (HMENU)IDC_HOOK_OUTPUT_EDIT, nullptr, nullptr);
-                CreateWindowW(L"BUTTON", L"浏览", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 740, 48, 70, 25, hwnd, (HMENU)IDC_HOOK_OUTPUT_BROWSE, nullptr, nullptr);
+                auto MakeStepLabel = [&](int y, const wchar_t* text) -> HWND
+                {
+                    return CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFT,
+                                         16, y, 200, 20, hwnd, nullptr, nullptr, nullptr);
+                };
+                auto MakeHint = [&](int y, int index, const wchar_t* text)
+                {
+                    CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFT,
+                                  kEditX, y, 630, 17, hwnd, (HMENU)(INT_PTR)(IDC_HOOK_HINT_BASE + index), nullptr, nullptr);
+                };
+                auto MakeEdit = [&](int x, int y, int width, int id)
+                {
+                    CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+                                    x, y, width, 24, hwnd, (HMENU)(INT_PTR)id, nullptr, nullptr);
+                };
+                auto MakeBrowse = [&](int y, int id)
+                {
+                    CreateWindowW(L"BUTTON", L"浏览", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                                  kBrowseX, y, kBrowseW, 26, hwnd, (HMENU)(INT_PTR)id, nullptr, nullptr);
+                };
 
-                CreateWindowW(L"STATIC", L"补充lst映射：", WS_CHILD | WS_VISIBLE | SS_LEFT, 18, 86, 95, 18, hwnd, nullptr, nullptr, nullptr);
-                CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 120, 83, 610, 23, hwnd, (HMENU)IDC_HOOK_SUPPLEMENT_EDIT, nullptr, nullptr);
-                CreateWindowW(L"BUTTON", L"浏览", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 740, 82, 70, 25, hwnd, (HMENU)IDC_HOOK_SUPPLEMENT_BROWSE, nullptr, nullptr);
+                // 第 1 步：要恢复的纯 Hash 解包目录
+                context->StepLabels[0] = MakeStepLabel(16, L"第 1 步 · 纯Hash目录（必填）");
+                MakeEdit(kEditX, 13, kEditW, IDC_HOOK_PURE_EDIT);
+                MakeBrowse(12, IDC_HOOK_PURE_BROWSE);
+                MakeHint(43, 0, L"要恢复的纯Hash解包目录，通常是游戏目录下的 Extractor_Output");
 
-                CreateWindowW(L"STATIC", L"候选目录表：", WS_CHILD | WS_VISIBLE | SS_LEFT, 18, 120, 95, 18, hwnd, nullptr, nullptr, nullptr);
-                CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 120, 117, 610, 23, hwnd, (HMENU)IDC_HOOK_DIRS_EDIT, nullptr, nullptr);
-                CreateWindowW(L"BUTTON", L"浏览", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 740, 116, 70, 25, hwnd, (HMENU)IDC_HOOK_DIRS_BROWSE, nullptr, nullptr);
+                // 第 2 步：撞库结果写入位置
+                context->StepLabels[1] = MakeStepLabel(76, L"第 2 步 · Hash输出目录（必填）");
+                MakeEdit(kEditX, 73, kEditW, IDC_HOOK_OUTPUT_EDIT);
+                MakeBrowse(72, IDC_HOOK_OUTPUT_BROWSE);
+                MakeHint(103, 1, L"撞库结果 HashRestore_RecoveredNames.lst 的写入目录");
 
-                CreateWindowW(L"STATIC", L"候选文件表：", WS_CHILD | WS_VISIBLE | SS_LEFT, 18, 154, 95, 18, hwnd, nullptr, nullptr, nullptr);
-                CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 120, 151, 610, 23, hwnd, (HMENU)IDC_HOOK_FILES_EDIT, nullptr, nullptr);
-                CreateWindowW(L"BUTTON", L"浏览", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 740, 150, 70, 25, hwnd, (HMENU)IDC_HOOK_FILES_BROWSE, nullptr, nullptr);
+                // 第 3 步：候选表（按钮与候选字段放在一起）
+                context->StepLabels[2] = MakeStepLabel(136, L"第 3 步 · 候选表（必填）");
+                CreateWindowW(L"STATIC", L"候选目录表", WS_CHILD | WS_VISIBLE | SS_LEFT,
+                              36, 168, 100, 20, hwnd, nullptr, nullptr, nullptr);
+                MakeEdit(146, 165, 600, IDC_HOOK_DIRS_EDIT);
+                MakeBrowse(164, IDC_HOOK_DIRS_BROWSE);
+                CreateWindowW(L"STATIC", L"候选文件表", WS_CHILD | WS_VISIBLE | SS_LEFT,
+                              36, 200, 100, 20, hwnd, nullptr, nullptr, nullptr);
+                MakeEdit(146, 197, 600, IDC_HOOK_FILES_EDIT);
+                MakeBrowse(196, IDC_HOOK_FILES_BROWSE);
+                CreateWindowW(L"BUTTON", L"从明文资源目录制作候选lst", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                              146, 232, 200, 28, hwnd, (HMENU)IDC_HOOK_MAKE_CANDIDATE, nullptr, nullptr);
+                CreateWindowW(L"BUTTON", L"扫描最新候选", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                              356, 232, 140, 28, hwnd, (HMENU)IDC_HOOK_RESCAN, nullptr, nullptr);
+                MakeHint(268, 2, L"没有候选表时先用左侧按钮生成；目录表和文件表至少要有一个");
 
-                CreateWindowW(L"BUTTON", L"制作候选lst", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 18, 190, 115, 28, hwnd, (HMENU)IDC_HOOK_MAKE_CANDIDATE, nullptr, nullptr);
-                CreateWindowW(L"BUTTON", L"重新扫描最新候选", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 143, 190, 145, 28, hwnd, (HMENU)IDC_HOOK_RESCAN, nullptr, nullptr);
-                CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_LEFT, 18, 230, 790, 135, hwnd, (HMENU)IDC_HOOK_SUMMARY, nullptr, nullptr);
-                CreateWindowW(L"BUTTON", L"开始撞库", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 610, 382, 95, 30, hwnd, (HMENU)IDC_HOOK_START, nullptr, nullptr);
-                CreateWindowW(L"BUTTON", L"取消", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 715, 382, 90, 30, hwnd, (HMENU)IDCANCEL, nullptr, nullptr);
+                // 第 4 步：可选补充映射
+                context->StepLabels[3] = MakeStepLabel(302, L"第 4 步 · 补充lst映射（可选）");
+                MakeEdit(kEditX, 299, kEditW, IDC_HOOK_SUPPLEMENT_EDIT);
+                MakeBrowse(298, IDC_HOOK_SUPPLEMENT_BROWSE);
+                MakeHint(329, 3, L"已有的映射文件，会合并进最终结果；没有可留空");
+
+                // 底部状态：只显示校验结果与游戏主程序，不重复上面的输入
+                CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_LEFT,
+                              16, 360, 832, 62, hwnd, (HMENU)IDC_HOOK_SUMMARY, nullptr, nullptr);
+                CreateWindowW(L"BUTTON", L"开始撞库", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                              650, 434, 110, 32, hwnd, (HMENU)IDC_HOOK_START, nullptr, nullptr);
+                CreateWindowW(L"BUTTON", L"取消", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                              768, 434, 90, 32, hwnd, (HMENU)IDCANCEL, nullptr, nullptr);
 
                 ::SendMessageW(hwnd, WM_SETFONT, (WPARAM)context->Font, TRUE);
                 ::EnumChildWindows(hwnd, ApplyLoaderFontToChild, (LPARAM)context->Font);
+                for (HWND label : context->StepLabels)
+                {
+                    if (label)
+                    {
+                        ::SendMessageW(label, WM_SETFONT, (WPARAM)context->BoldFont, TRUE);
+                    }
+                }
                 RefreshHookDialog(hwnd, context);
                 return 0;
+            }
+            case WM_CTLCOLORSTATIC:
+            {
+                if (!context)
+                {
+                    break;
+                }
+                const int controlId = ::GetDlgCtrlID((HWND)lParam);
+                HDC dc = (HDC)wParam;
+                ::SetBkMode(dc, TRANSPARENT);
+                if (controlId == IDC_HOOK_SUMMARY)
+                {
+                    ::SetTextColor(dc, context->StatusReady ? RGB(0, 110, 40) : RGB(178, 78, 0));
+                    return (LRESULT)::GetSysColorBrush(COLOR_WINDOW);
+                }
+                if (controlId >= IDC_HOOK_HINT_BASE && controlId < IDC_HOOK_HINT_BASE + IDC_HOOK_HINT_COUNT)
+                {
+                    ::SetTextColor(dc, RGB(110, 110, 110));
+                    return (LRESULT)::GetSysColorBrush(COLOR_WINDOW);
+                }
+                break;
             }
             case WM_COMMAND:
                 if (!context)
@@ -676,7 +797,7 @@ namespace
                     if (context->Options.DirsPath.empty() && context->Options.FilesPath.empty())
                     {
                         int choice = ::MessageBoxW(hwnd,
-                                                   L"还没有候选表。\r\n\r\n可以点击“制作候选lst”从明文资源目录生成，也可以点击“重新扫描最新候选”，或者手动浏览选择 dirs/files txt。\r\n\r\n现在要制作候选lst吗？",
+                                                   L"还没有候选表。\r\n\r\n可以点击“从明文资源目录制作候选lst”生成，也可以点击“扫描最新候选”，或者手动浏览选择 dirs/files txt。\r\n\r\n现在要制作候选lst吗？",
                                                    L"Cxdec Hook撞库恢复Hash映射",
                                                    MB_YESNO | MB_ICONQUESTION);
                         if (choice == IDYES)
@@ -707,10 +828,18 @@ namespace
                 ::DestroyWindow(hwnd);
                 return 0;
             case WM_DESTROY:
-                if (context && context->Font)
+                if (context)
                 {
-                    ::DeleteObject(context->Font);
-                    context->Font = nullptr;
+                    if (context->Font)
+                    {
+                        ::DeleteObject(context->Font);
+                        context->Font = nullptr;
+                    }
+                    if (context->BoldFont)
+                    {
+                        ::DeleteObject(context->BoldFont);
+                        context->BoldFont = nullptr;
+                    }
                 }
                 return 0;
         }
@@ -742,8 +871,8 @@ namespace
                                       WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
                                       CW_USEDEFAULT,
                                       CW_USEDEFAULT,
-                                      840,
-                                      465,
+                                      880,
+                                      530,
                                       owner,
                                       nullptr,
                                       windowClass.hInstance,
@@ -925,11 +1054,8 @@ INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                     injectDllFileName = L"CxdecStringDumper.dll";
                     break;
                 case IDC_KeyStatic:
-                    // 先静态提取完整 Key，再动态提取补充部分 Key。
+                    // 只做静态提取；运行时动态提取已废弃，不再注入 CxdecKeyDumper.dll。
                     RunStaticKeyExtraction(hwnd);
-                    injectDllFileName = L"CxdecKeyDumper.dll";
-                    // 动态提取是异步分阶段完成的，loader 需要继续存活来展示进度。
-                    shouldCloseLoaderAfterLaunch = false;
                     break;
                 case IDC_HashRestore:
                     if (!ShowHookHashRestoreLaunchDialog(hwnd, hookHashOptions))
@@ -1016,7 +1142,6 @@ INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                         // 异步模式下禁止重复点击，避免多个目标进程同时回报到同一个 loader。
                         ::EnableWindow(::GetDlgItem(hwnd, IDC_Extractor), FALSE);
                         ::EnableWindow(::GetDlgItem(hwnd, IDC_StringDumper), FALSE);
-                        ::EnableWindow(::GetDlgItem(hwnd, IDC_KeyDumper), FALSE);
                         ::EnableWindow(::GetDlgItem(hwnd, IDC_HashRestore), FALSE);
                         ShowKeyProgressControls(hwnd, true);
                         UpdateKeyProgressUi(hwnd, 0u, hasHookHashOptions ? L"等待撞库开始" : L"等待提取开始");
@@ -1124,12 +1249,34 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 					auto BP = [&]() { auto b=g_KrkrExeFullPath; auto d=b.rfind(L'.'); return (d!=std::wstring::npos)?b.substr(0,d):b; };
 					std::wstring unp = BP() + L"_unp.exe";
 					std::wstring api = GD() + L"steam_api.dll";
+					std::wstring apiBak = api + L".bak";
+					std::wstring crackedApi = LdDir() + L"CxdecExtractordll\\steamapi_cra\\steam_api.dll";
 
-					Log(L"[Loader] Backing up steam_api.dll...");
-					if (GetFileAttributesW((api+L".bak").c_str()) == INVALID_FILE_ATTRIBUTES &&
-					    GetFileAttributesW(api.c_str()) != INVALID_FILE_ATTRIBUTES)
-						MoveFileW(api.c_str(), (api+L".bak").c_str());
-					CopyFileW((LdDir()+L"CxdecExtractordll\\steamapi_cra\\steam_api.dll").c_str(), api.c_str(), FALSE);
+					// 仅当破解版 dll 存在时才动原版，避免部署缺失把游戏目录改坏。
+					if (GetFileAttributesW(crackedApi.c_str()) != INVALID_FILE_ATTRIBUTES)
+					{
+						if (GetFileAttributesW(apiBak.c_str()) == INVALID_FILE_ATTRIBUTES &&
+						    GetFileAttributesW(api.c_str()) != INVALID_FILE_ATTRIBUTES)
+						{
+							MoveFileW(api.c_str(), apiBak.c_str());
+							Log(L"[Loader] Backed up steam_api.dll -> .bak");
+						}
+
+						if (!CopyFileW(crackedApi.c_str(), api.c_str(), FALSE))
+						{
+							// 拷贝失败则回滚：原版已移走、新 dll 又没到位时恢复。
+							if (GetFileAttributesW(apiBak.c_str()) != INVALID_FILE_ATTRIBUTES &&
+							    GetFileAttributesW(api.c_str()) == INVALID_FILE_ATTRIBUTES)
+							{
+								MoveFileW(apiBak.c_str(), api.c_str());
+							}
+							Log(L"[Loader] FAIL: steam_api.dll replace failed");
+						}
+					}
+					else
+					{
+						Log(L"[Loader] WARNING: cracked steam_api.dll missing, skip swap");
+					}
 
 					Log(L"[Loader] Unpacking...");
 					if (P(g_KrkrExeFullPath.c_str(), unp.c_str()))

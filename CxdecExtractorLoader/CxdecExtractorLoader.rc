@@ -69,7 +69,6 @@ BEGIN
     PUSHBUTTON      "加载运行时恢复Hash映射模块",IDC_StringDumper,38,42,185,14,NOT WS_TABSTOP
     PUSHBUTTON      "加载Hook撞库恢复Hash映射模块",IDC_HashRestore,38,67,185,14,NOT WS_TABSTOP
     PUSHBUTTON      "提取Key",IDC_KeyStatic,38,92,185,14,NOT WS_TABSTOP
-    LTEXT           "静态提取完整 Key，动态补充部分 Key",IDC_KeyHint,38,111,185,10
     LTEXT           "提取进度",IDC_KeyProgressLabel,25,128,40,10
     CONTROL         "",IDC_KeyProgress,"msctls_progress32",WS_BORDER | WS_TABSTOP,25,141,180,12
     LTEXT           "0%",IDC_KeyProgressText,214,129,20,10

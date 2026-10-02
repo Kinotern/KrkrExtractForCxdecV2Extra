@@ -1,0 +1,86 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      toolset:
+        description: 'PlatformToolset 覆盖（留空则用 .vcxproj 里的 v143）'
+        required: false
+        default: ''
+
+# 打 tag 时需要用 GITHUB_TOKEN 创建 Release
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # .sln 是 VS17（17.6），17 个项目统一 v143 工具集，windows-2022 镜像与之匹配。
+    # 本地若只装了更新的工具集（如 v145），需要 /p:PlatformToolset=vXXX 覆盖，CI 上不需要。
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Release x86
+        shell: pwsh
+        run: |
+          $params = @(
+            'KrkrZCxdecV2.sln',
+            '/p:Configuration=Release',
+            '/p:Platform=x86',
+            '/m', '/v:minimal', '/nologo'
+          )
+          if ('${{ inputs.toolset }}' -ne '') {
+            $params += "/p:PlatformToolset=${{ inputs.toolset }}"
+          }
+          msbuild @params
+
+      # CxdecKeyStatic 等项目的 post-build 已清自己的 .lib/.exp，这里兜底清理全局副产物
+      - name: Strip link byproducts
+        shell: pwsh
+        run: |
+          Get-ChildItem Release -Recurse -Include *.pdb, *.lib, *.exp -File -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+
+      - name: List output
+        shell: pwsh
+        run: |
+          Get-ChildItem Release -Recurse -File |
+            ForEach-Object { "{0,10:N0}  {1}" -f $_.Length, $_.FullName.Substring($PWD.Path.Length + 1) }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KrkrExtractForCxdecV2-${{ github.sha }}
+          path: Release/**
+          if-no-files-found: error
+
+      - name: Package release zip
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          Compress-Archive -Path Release/* `
+            -DestinationPath "KrkrExtractForCxdecV2-${{ github.ref_name }}.zip" -Force
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            "KrkrExtractForCxdecV2-${{ github.ref_name }}.zip" `
+            --title "${{ github.ref_name }}" --generate-notes

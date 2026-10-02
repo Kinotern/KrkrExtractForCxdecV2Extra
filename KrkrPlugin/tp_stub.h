@@ -5174,137 +5174,137 @@ class iTVPLayerManager
 {
 public:
 //-- object lifetime management
-	//! @brief	参照カウンタをインクリメントする
+	// 引用计数加一
 	virtual void TJS_INTF_METHOD AddRef() = 0;
 
-	//! @brief	参照カウンタをデクリメントする
+	// 引用计数减一
 	virtual void TJS_INTF_METHOD Release() = 0;
 
 //-- draw device specific information
-	//! @brief	描画デバイス固有の情報を設定する
-	//! @param	data	描画デバイス固有の情報
-	//! @note	描画デバイス固有の情報をレイヤマネージャに設定する。
-	//!			レイヤマネージャではこの情報の中身については関知しない。
-	//!			描画デバイス側で目印に使ったり、特定の情報と結びつけて管理する。
+	// 设置绘图设备特有的信息
+	// data: 绘图设备特有的信息
+	// 将绘图设备特有的信息设置到图层管理器。
+	// 图层管理器不关心该信息的具体内容。
+	// 由绘图设备侧用作标记，或与特定信息绑定来管理。
 	virtual void TJS_INTF_METHOD SetDrawDeviceData(void * data) = 0;
 
-	//! @brief	描画デバイス固有の情報を取得する
-	//! @return	描画デバイス固有の情報
+	// 获取绘图设备特有的信息
+	// 绘图设备特有的信息
 	virtual void * TJS_INTF_METHOD GetDrawDeviceData() const = 0;
 
 //-- layer metrics
-	//! @brief	プライマリレイヤのサイズを取得する
-	//! @param	w	レイヤの横幅(ピクセル単位)
-	//! @param	h	レイヤの縦幅(ピクセル単位)
-	//! @return	取得に成功すれば真、失敗すれば偽
+	// 获取主图层的大小
+	// w: 图层的宽度（像素单位）
+	// h: 图层的高度（像素单位）
+	// 成功返回真，失败返回假
 	virtual bool TJS_INTF_METHOD GetPrimaryLayerSize(tjs_int &w, tjs_int &h) const = 0;
 
 //-- layer structure information
-	//! @brief	プライマリレイヤの取得
-	//! @return	プライマリレイヤ
+	// 获取主图层
+	// 主图层
 	virtual tTJSNI_BaseLayer * TJS_INTF_METHOD GetPrimaryLayer() const = 0;
 
-	//! @brief	フォーカスのあるレイヤの取得
-	//! @return	フォーカスのあるレイヤ
+	// 获取拥有焦点的图层
+	// 拥有焦点的图层
 	virtual tTJSNI_BaseLayer * TJS_INTF_METHOD GetFocusedLayer() const = 0;
 
-	//! @brief	フォーカスのあるレイヤの設定
-	//! @param	layer	フォーカスのあるレイヤ
+	// 设置拥有焦点的图层
+	// layer: 拥有焦点的图层
 	virtual void TJS_INTF_METHOD SetFocusedLayer(tTJSNI_BaseLayer * layer) = 0;
 
 //-- HID releted
-	//! @brief		クリックされた
-	//! @param		x		プライマリレイヤ座標上における x 位置
-	//! @param		y		プライマリレイヤ座標上における y 位置
+	// 被单击
+	// x: 主图层坐标上的 x 位置
+	// y: 主图层坐标上的 y 位置
 	virtual void TJS_INTF_METHOD NotifyClick(tjs_int x, tjs_int y) = 0;
 
-	//! @brief		ダブルクリックされた
-	//! @param		x		プライマリレイヤ座標上における x 位置
-	//! @param		y		プライマリレイヤ座標上における y 位置
+	// 被双击
+	// x: 主图层坐标上的 x 位置
+	// y: 主图层坐标上的 y 位置
 	virtual void TJS_INTF_METHOD NotifyDoubleClick(tjs_int x, tjs_int y) = 0;
 
-	//! @brief		マウスボタンが押下された
-	//! @param		x		プライマリレイヤ座標上における x 位置
-	//! @param		y		プライマリレイヤ座標上における y 位置
-	//! @param		mb		どのマウスボタンか
-	//! @param		flags	フラグ(TVP_SS_*定数の組み合わせ)
+	// 鼠标按键被按下
+	// x: 主图层坐标上的 x 位置
+	// y: 主图层坐标上的 y 位置
+	// mb: 是哪个鼠标按键
+	// flags: 标志（TVP_SS_* 常量的组合）
 	virtual void TJS_INTF_METHOD NotifyMouseDown(tjs_int x, tjs_int y, tTVPMouseButton mb, tjs_uint32 flags) = 0;
 
-	//! @brief		マウスボタンが離された
-	//! @param		x		プライマリレイヤ座標上における x 位置
-	//! @param		y		プライマリレイヤ座標上における y 位置
-	//! @param		mb		どのマウスボタンか
-	//! @param		flags	フラグ(TVP_SS_*定数の組み合わせ)
+	// 鼠标按键被松开
+	// x: 主图层坐标上的 x 位置
+	// y: 主图层坐标上的 y 位置
+	// mb: 是哪个鼠标按键
+	// flags: 标志（TVP_SS_* 常量的组合）
 	virtual void TJS_INTF_METHOD NotifyMouseUp(tjs_int x, tjs_int y, tTVPMouseButton mb, tjs_uint32 flags) = 0;
 
-	//! @brief		マウスが移動した
-	//! @param		x		プライマリレイヤ座標上における x 位置
-	//! @param		y		プライマリレイヤ座標上における y 位置
-	//! @param		flags	フラグ(TVP_SS_*定数の組み合わせ)
+	// 鼠标移动了
+	// x: 主图层坐标上的 x 位置
+	// y: 主图层坐标上的 y 位置
+	// flags: 标志（TVP_SS_* 常量的组合）
 	virtual void TJS_INTF_METHOD NotifyMouseMove(tjs_int x, tjs_int y, tjs_uint32 flags) = 0;
 
-	//! @brief		マウスキャプチャを解放する
-	//! @note		マウスキャプチャを解放すべき場合にウィンドウから呼ばれる。
+	// 释放鼠标捕获
+	// 在应当释放鼠标捕获时由窗口调用。
 	virtual void TJS_INTF_METHOD ReleaseCapture() = 0;
 
-	//! @brief		マウスがプライマリレイヤ外に移動した
+	// 鼠标移动到主图层外
 	virtual void TJS_INTF_METHOD NotifyMouseOutOfWindow() = 0;
 
-	//! @brief		キーが押された
-	//! @param		key		仮想キーコード
-	//! @param		shift	シフトキーの状態
+	// 按键被按下
+	// key: 虚拟键码
+	// shift: Shift 键的状态
 	virtual void TJS_INTF_METHOD NotifyKeyDown(tjs_uint key, tjs_uint32 shift) = 0;
 
-	//! @brief		キーが離された
-	//! @param		key		仮想キーコード
-	//! @param		shift	シフトキーの状態
+	// 按键被松开
+	// key: 虚拟键码
+	// shift: Shift 键的状态
 	virtual void TJS_INTF_METHOD NotifyKeyUp(tjs_uint key, tjs_uint32 shift) = 0;
 
-	//! @brief		キーによる入力
-	//! @param		key		文字コード
+	// 按键输入
+	// key: 字符码
 	virtual void TJS_INTF_METHOD NotifyKeyPress(tjs_char key) = 0;
 
-	//! @brief		マウスホイールが回転した
-	//! @param		shift	シフトキーの状態
-	//! @param		delta	回転角
-	//! @param		x		プライマリレイヤ座標上における x 位置
-	//! @param		y		プライマリレイヤ座標上における y 位置
+	// 鼠标滚轮转动了
+	// shift: Shift 键的状态
+	// delta: 旋转角度
+	// x: 主图层坐标上的 x 位置
+	// y: 主图层坐标上的 y 位置
 	virtual void TJS_INTF_METHOD NotifyMouseWheel(tjs_uint32 shift, tjs_int delta, tjs_int x, tjs_int y) = 0;
 
-	//! @brief		入力状態のチェック
-	//! @note		ウィンドウから約1秒おきに、レイヤマネージャがユーザからの入力の状態を
-	//!				再チェックするために呼ばれる。レイヤ状態の変化がユーザの入力とは
-	//!				非同期に行われた場合、たとえばマウスカーソルの下にレイヤが出現した
-	//!				のにもかかわらず、マウスカーソルがそのレイヤの指定する形状に変更されない
-	//!				といった状況が発生しうる。このような状況に対処するため、ウィンドウから
-	//!				このメソッドが約1秒おきに呼ばれる。
+	// 检查输入状态
+	// 窗口大约每 1 秒调用一次，以便图层管理器重新检查
+	// 用户输入的状态。当图层状态的变化与用户输入
+	// 异步发生时（例如鼠标光标下出现了图层），
+	// 但鼠标光标却没有变成该图层指定的形状，
+	// 这样的状况就可能发生。为了应对这种状况，
+	// 窗口会大约每 1 秒调用一次本方法。
 	virtual void TJS_INTF_METHOD RecheckInputState() = 0;
 
 //-- invalidation/update
-	//! @brief		描画デバイスが望むレイヤの出力形式を設定する
-	//! @param		type	レイヤ形式
-	//! @note		デフォルトは ltOpaque 。描画デバイスが他の形式の画像を出力として
-	//!				望むならばその形式を指定する。ただし、プライマリレイヤの type
-	//!				プロパティも同様に変更すること。
+	// 设置绘图设备期望的图层输出格式
+	// type: 图层格式
+	// 默认为 ltOpaque。若绘图设备期望输出其他格式的图像，
+	// 则指定该格式。不过，主图层的 type
+	// 属性也需要同样地修改。
 	virtual void TJS_INTF_METHOD SetDesiredLayerType(tTVPLayerType type) = 0;
 
-	//! @brief		特定の矩形の再描画を要求する
-	//! @param		r		プライマリレイヤ座標上における矩形
-	//! @note		特定の矩形の再描画をレイヤマネージャに対して要求する。
-	//!				要求は記録されるだけでこのメソッドはすぐに戻る。実際にそれが
-	//!				演算されるのは UpdateToDrawDevice() を呼んだときである。
+	// 请求重绘指定矩形
+	// r: 主图层坐标上的矩形
+	// 向图层管理器请求重绘指定矩形。
+	// 该请求仅被记录，本方法会立即返回。实际的重绘
+	// 是在调用 UpdateToDrawDevice() 时才执行。
 	virtual void TJS_INTF_METHOD RequestInvalidation(const tTVPRect &r) = 0; // draw device -> layer
 
-	//! @brief		内容の再描画を行う
-	//! @note		内容の再描画を行う際に呼ぶ。このメソッド内では、レイヤマネージャは
-	//!				iTVPDrawDevice::StartBitmapCompletion()
-	//!				iTVPDrawDevice::NotifyBitmapCompleted()
-	//!				iTVPDrawDevice::EndBitmapCompletion() の各メソッドを用い、
-	//!				いままでに変更が行われた領域などを順次描画デバイスに送る。
+	// 重绘内容
+	// 在重绘内容时调用。在本方法中，图层管理器
+	// iTVPDrawDevice::StartBitmapCompletion()
+	// iTVPDrawDevice::NotifyBitmapCompleted()
+	// 使用 iTVPDrawDevice 的 StartBitmapCompletion()、NotifyBitmapCompleted()、EndBitmapCompletion() 各方法，
+	// 将到目前为止发生变更的区域依次发送给绘图设备。
 	virtual void TJS_INTF_METHOD UpdateToDrawDevice() = 0;
 
 //-- debug assist
-	//! @brief		(Window->DrawDevice) レイヤ構造をコンソールにダンプする
+	// (Window->DrawDevice) 将图层结构转储到控制台
 	virtual void TJS_INTF_METHOD DumpLayerStructure() = 0;
 };
 //---------------------------------------------------------------------------
@@ -5335,75 +5335,75 @@ enum tTVPMouseCursorState
 
 
 //---------------------------------------------------------------------------
-//! @brief Window basic interface
+// Window basic interface
 //---------------------------------------------------------------------------
 class iTVPWindow
 {
 public:
-	//! @brief	元画像のサイズが変更された
-	//! @note	描画デバイスが、元画像のサイズが変更されたことを通知するために呼ぶ。
-	//!			ウィンドウは iTVPDrawDevice::GetSrcSize() を呼び出して元画像の
-	//!			サイズを取得した後、ズームなどの計算を行ってから 
-	//!			iTVPDrawDevice::SetTargetWindow() を呼び出す。
+	// 原图像的大小发生了改变
+	// 绘图设备用于通知原图像的大小发生了改变。
+	// 窗口调用 iTVPDrawDevice::GetSrcSize() 获取原图像的
+	// 大小后，进行缩放等计算，然后
+	// 调用 iTVPDrawDevice::SetTargetWindow()。
 	virtual void TJS_INTF_METHOD NotifySrcResize() = 0;
 
-	//! @brief		マウスカーソルの形状をデフォルトに戻す
-	//! @note		マウスカーソルの形状をデフォルトの物に戻したい場合に呼ぶ
+	// 将鼠标光标的形状恢复为默认
+	// 在希望将鼠标光标形状恢复为默认时调用
 	virtual void TJS_INTF_METHOD SetDefaultMouseCursor() = 0; // set window mouse cursor to default
 
-	//! @brief		マウスカーソルの形状を設定する
-	//! @param		cursor		マウスカーソル形状番号
+	// 设置鼠标光标的形状
+	// cursor: 鼠标光标形状编号
 	virtual void TJS_INTF_METHOD SetMouseCursor(tjs_int cursor) = 0; // set window mouse cursor
 
-	//! @brief		マウスカーソルの位置を取得する
-	//! @param		x			描画矩形内の座標におけるマウスカーソルのx位置
-	//! @param		y			描画矩形内の座標におけるマウスカーソルのy位置
+	// 获取鼠标光标的位置
+	// x: 绘图矩形内坐标中的鼠标光标 x 位置
+	// y: 绘图矩形内坐标中的鼠标光标 y 位置
 	virtual void TJS_INTF_METHOD GetCursorPos(tjs_int &x, tjs_int &y) = 0;
 		// get mouse cursor position in primary layer's coordinates
 
-	//! @brief		マウスカーソルの位置を設定する
-	//! @param		x			描画矩形内の座標におけるマウスカーソルのx位置
-	//! @param		y			描画矩形内の座標におけるマウスカーソルのy位置
+	// 设置鼠标光标的位置
+	// x: 绘图矩形内坐标中的鼠标光标 x 位置
+	// y: 绘图矩形内坐标中的鼠标光标 y 位置
 	virtual void TJS_INTF_METHOD SetCursorPos(tjs_int x, tjs_int y) = 0;
 
-	//! @brief		ウィンドウのマウスキャプチャを解放する
-	//! @note		ウィンドウのマウスキャプチャを解放すべき場合に呼ぶ。
-	//! @note		このメソッドでは基本的には ::ReleaseCapture() などで
-	//!				マウスのキャプチャを開放すること。
+	// 释放窗口的鼠标捕获
+	// 在应当释放窗口鼠标捕获时调用。
+	// 本方法中基本上应通过 ::ReleaseCapture() 等
+	// 来释放鼠标捕获。
 	virtual void TJS_INTF_METHOD WindowReleaseCapture() = 0;
 
-	//! @brief		ツールチップヒントを設定する
-	//! @param		text		ヒントテキスト(空文字列の場合はヒントの表示をキャンセルする)
+	// 设置工具提示
+	// text: 提示文本（空字符串时取消提示的显示）
 	virtual void TJS_INTF_METHOD SetHintText(const ttstr & text) = 0;
 
-	//! @brief		注視ポイントの設定
-	//! @param		layer		フォント情報の含まれるレイヤ
-	//! @param		x			描画矩形内の座標における注視ポイントのx位置
-	//! @param		y			描画矩形内の座標における注視ポイントのy位置
+	// 设置注视点
+	// layer: 包含字体信息的图层
+	// x: 绘图矩形内坐标中的注视点 x 位置
+	// y: 绘图矩形内坐标中的注视点 y 位置
 	virtual void TJS_INTF_METHOD SetAttentionPoint(tTJSNI_BaseLayer *layer,
 		tjs_int l, tjs_int t) = 0;
 
-	//! @brief		注視ポイントの解除
+	// 解除注视点
 	virtual void TJS_INTF_METHOD DisableAttentionPoint() = 0;
 
-	//! @brief		IMEモードの設定
-	//! @param		mode		IMEモード
+	// 设置 IME 模式
+	// mode: IME 模式
 	virtual void TJS_INTF_METHOD SetImeMode(tTVPImeMode mode) = 0;
 
-	//! @brief		IMEモードのリセット
+	// 重置 IME 模式
 	virtual void TJS_INTF_METHOD ResetImeMode() = 0;
 
-	//! @brief		iTVPWindow::Update() の呼び出しを要求する
-	//! @note		ウィンドウに対して iTVPWindow::Update() を次の適当なタイミングで
-	//!				呼び出すことを要求する。
-	//!				iTVPWindow::Update() が呼び出されるまでは何回 RequestUpdate() を
-	//!				呼んでも効果は同じである。また、一度 iTVPWindow::Update() が
-	//!				呼び出されると、再び RequestUpdate() を呼ばない限りは
-	//!				iTVPWindow::Update() は呼ばれない。
+	// 请求调用 iTVPWindow::Update()
+	// 请求窗口在下一个合适的时机
+	// 调用 iTVPWindow::Update()。
+	// 在 iTVPWindow::Update() 被调用之前，无论调用多少次 RequestUpdate()
+	// 效果都相同。另外，一旦 iTVPWindow::Update() 被调用，
+	// 除非再次调用 RequestUpdate()，否则
+	// iTVPWindow::Update() 不会被调用。
 	virtual void TJS_INTF_METHOD RequestUpdate() = 0;
 
 
-	//! @brief		WindowのiTJSDispatch2インターフェースを取得する
+	// 获取 Window 的 iTJSDispatch2 接口
 	virtual iTJSDispatch2 * GetWindowDispatch() = 0;
 
 };
@@ -5445,310 +5445,310 @@ struct IDirectDrawClipper;
 
 
 //---------------------------------------------------------------------------
-//! @brief		描画デバイスインターフェース
+// 绘图设备接口
 //---------------------------------------------------------------------------
 class iTVPDrawDevice
 {
 public:
-//---- オブジェクト生存期間制御
-	//! @brief		(Window→DrawDevice) 描画デバイスを破棄する
-	//! @note		ウィンドウが破棄されるとき、あるいはほかの描画デバイスが
-	//!				設定されたためにこの描画デバイスが必要なくなった際に呼ばれる。
-	//!				通常、ここでは delete this を実行し、描画デバイスを破棄するが、その前に
-	//!				AddLayerManager() でこの描画デバイスの管理下に入っている
-	//!				レイヤマネージャをすべて Release する。
-	//!				レイヤマネージャの Release 中に RemoveLayerManager() が呼ばれる
-	//!				可能性があることに注意すること。
+//---- 对象生存期控制
+	// (Window→DrawDevice) 销毁绘图设备
+	// 在窗口被销毁时，或者因设置了其他绘图设备
+	// 而不再需要本绘图设备时调用。
+	// 通常在这里执行 delete this 销毁绘图设备，但在此之前
+	// 要先把通过 AddLayerManager() 进入本绘图设备管理之下的
+	// 所有图层管理器全部 Release。
+	// 在 Release 图层管理器的过程中，可能会调用 RemoveLayerManager()，
+	// 请务必注意。
 	virtual void TJS_INTF_METHOD Destruct() = 0;
 
 //---- window interface 関連
-	//! @brief		(Window→DrawDevice) ウィンドウインターフェースを設定する
-	//! @param		window		ウィンドウインターフェース
-	//! @note		(TJSから) Window.drawDevice プロパティを設定した直後に呼ばれる。
+	// (Window→DrawDevice) 设置窗口接口
+	// window: 窗口接口
+	// 在（从 TJS）设置 Window.drawDevice 属性之后立即调用。
 	virtual void TJS_INTF_METHOD SetWindowInterface(iTVPWindow * window) = 0;
 
-//---- LayerManager の管理関連
-	//! @brief		(Window→DrawDevice) レイヤマネージャを追加する
-	//! @note		プライマリレイヤがウィンドウに追加されると、自動的にレイヤマネージャが
-	//!				作成され、それが描画デバイスにもこのメソッドの呼び出しにて通知される。
-	//!				描画デバイスでは iTVPLayerManager::AddRef() を呼び出して、追加された
-	//!				レイヤマネージャをロックすること。
+//---- LayerManager 的管理相关
+	// (Window→DrawDevice) 添加图层管理器
+	// 当主图层被添加到窗口时，会自动创建图层管理器，
+	// 并通过本方法的调用来通知绘图设备。
+	// 绘图设备应调用 iTVPLayerManager::AddRef() 来锁定
+	// 被添加的图层管理器。
 	virtual void TJS_INTF_METHOD AddLayerManager(iTVPLayerManager * manager) = 0;
 
-	//! @brief		(Window→DrawDevice) レイヤマネージャを削除する
-	//! @note		プライマリレイヤが invalidate される際に呼び出される。
-	//TODO: プライマリレイヤ無効化、あるいはウィンドウ破棄時の終了処理が正しいか？
+	// (Window→DrawDevice) 删除图层管理器
+	// 在主图层失效（invalidate）时调用。
+	//TODO: 主图层失效、或窗口销毁时的结束处理是否正确？
 	virtual void TJS_INTF_METHOD RemoveLayerManager(iTVPLayerManager * manager) = 0;
 
-//---- 描画位置・サイズ関連
-	//! @brief		(Window→DrawDevice) 描画先ウィンドウの設定
-	//! @param		wnd		ウィンドウハンドル
-	//! @param		is_main	メインウィンドウの場合に真
-	//! @note		ウィンドウから描画先となるウィンドウハンドルを指定するために呼ばれる。
-	//!				しばしば、Window.borderStyle プロパティが変更されたり、フルスクリーンに
-	//!				移行するときやフルスクリーンから戻る時など、ウィンドウが再作成される
-	//!				ことがあるが、そのような場合には、ウィンドウがいったん破棄される直前に
-	//!				wnd = NULL の状態でこのメソッドが呼ばれることに注意。ウィンドウが作成
-	//!				されたあと、再び有効なウィンドウハンドルを伴ってこのメソッドが呼ばれる。
-	//!				このメソッドは、ウィンドウが作成された直後に呼ばれる保証はない。
-	//!				たいてい、一番最初にウィンドウが表示された直後に呼ばれる。
+//---- 绘图位置、大小相关
+	// (Window→DrawDevice) 设置绘图目标窗口
+	// wnd: 窗口句柄
+	// is_main: 是主窗口时为真
+	// 由窗口调用，用于指定作为绘图目标的窗口句柄。
+	// 经常在 Window.borderStyle 属性被修改、进入全屏、
+	// 或从全屏返回等导致窗口被重新创建的情况下被调用。
+	// 这种情况下，注意：在窗口即将被销毁之前，
+	// 会以 wnd = NULL 的状态调用本方法。窗口被创建之后，
+	// 会再次携带有効的窗口句柄调用本方法。
+	// 本方法不保证在窗口创建后立即被调用。
+	// 通常是在窗口第一次显示之后不久被调用。
 	virtual void TJS_INTF_METHOD SetTargetWindow(HWND wnd, bool is_main) = 0;
 
-	//! @brief		(Window->DrawDevice) 描画矩形の設定
-	//! @note		ウィンドウから、描画先となる矩形を設定するために呼ばれる。
-	//!				描画デバイスは、SetTargetWindow() で指定されたウィンドウのクライアント領域の、
-	//!				このメソッドで指定された矩形に表示を行う必要がある。
-	//!				この矩形は、GetSrcSize で返した値に対し、Window.zoomNumer や Window.zoomDenum
-	//!				プロパティによる拡大率や、Window.layerLeft や Window.layerTop が加味された
-	//!				矩形である。
-	//!				このメソッドによって描画矩形が変わったとしても、このタイミングで
-	//!				描画デバイス側で再描画を行う必要はない(必要があれば別メソッドにより
-	//!				再描画の必要性が通知されるため)。
+	// (Window->DrawDevice) 设置绘图矩形
+	// 由窗口调用，用于设置作为绘图目标的矩形。
+	// 绘图设备需要在 SetTargetWindow() 指定窗口的客户区中、
+	// 在本方法指定的矩形内进行显示。
+	// 该矩形是在 GetSrcSize 返回值的基础上，叠加了 Window.zoomNumer / Window.zoomDenum
+	// 属性决定的缩放倍率，以及 Window.layerLeft / Window.layerTop 偏移后得到
+	// 的矩形。
+	// 即使本方法改变了绘图矩形，也无需在这个时机
+	// 由绘图设备侧进行重绘（如有必要，会通过其他方法
+	// 通知重绘的必要性）。
 	virtual void TJS_INTF_METHOD SetDestRectangle(const tTVPRect & rect) = 0;
 
-	//! @brief		(Window->DrawDevice) 元画像のサイズを得る
-	//! @note		ウィンドウから、描画矩形のサイズを決定するために元画像のサイズが
-	//!				必要になった際に呼ばれる。ウィンドウはこれをもとに SetDestRectangle()
-	//!				メソッドで描画矩形を通知してくるだけなので、
-	//!				なんらかの意味のあるサイズである必要は必ずしもない。
+	// (Window->DrawDevice) 获取原图像的大小
+	// 由窗口调用，用于在决定绘图矩形大小时获取原图像大小。
+	// 窗口会基于此值，通过 SetDestRectangle()
+	// 方法仅通知绘图矩形，因此
+	// 返回的尺寸并不一定需要有某种实际含义。
 	virtual void TJS_INTF_METHOD GetSrcSize(tjs_int &w, tjs_int &h) = 0;
 
-	//! @brief		(LayerManager→DrawDevice) レイヤサイズ変更の通知
-	//! @param		manager		レイヤマネージャ
-	//! @note		レイヤマネージャにアタッチされているプライマリレイヤのサイズが変わった
-	//!				際に呼び出される
+	// (LayerManager→DrawDevice) 图层大小变更通知
+	// manager: 图层管理器
+	// 在附着于图层管理器的主图层大小发生变化时
+	// 调用。
 	virtual void TJS_INTF_METHOD NotifyLayerResize(iTVPLayerManager * manager) = 0;
 
-	//! @brief		(LayerManager→DrawDevice) レイヤの画像の変更の通知
-	//! @param		manager		レイヤマネージャ
-	//! @note		レイヤの画像に変化があった際に呼び出される。
-	//!				この通知を受け取った後に iTVPLayerManager::UpdateToDrawDevice()
-	//!				を呼び出せば、該当部分を描画デバイスに対して描画させることができる。
-	//!				この通知を受け取っても無視することは可能。その場合は、
-	//!				次に iTVPLayerManager::UpdateToDrawDevice() を呼んだ際に、
-	//!				それまでの変更分がすべて描画される。
+	// (LayerManager→DrawDevice) 图层图像变更通知
+	// manager: 图层管理器
+	// 在图层图像发生变化时调用。
+	// 收到本通知后，若调用 iTVPLayerManager::UpdateToDrawDevice()，
+	// 即可让该部分在绘图设备上进行绘制。
+	// 收到本通知后也可以忽略。这种情况下，
+	// 在下次调用 iTVPLayerManager::UpdateToDrawDevice() 时，
+	// 会一次性绘制此前的所有变更。
 	virtual void TJS_INTF_METHOD NotifyLayerImageChange(iTVPLayerManager * manager) = 0;
 
-//---- ユーザーインターフェース関連
-	//! @brief		(Window→DrawDevice) クリックされた
-	//! @param		x		描画矩形内における x 位置(描画矩形の左上が原点)
-	//! @param		y		描画矩形内における y 位置(描画矩形の左上が原点)
+//---- 用户界面相关
+	// (Window→DrawDevice) 被单击
+	// x: 绘图矩形内的 x 位置（绘图矩形左上角为原点）
+	// y: 绘图矩形内的 y 位置（绘图矩形左上角为原点）
 	virtual void TJS_INTF_METHOD OnClick(tjs_int x, tjs_int y) = 0;
 
-	//! @brief		(Window→DrawDevice) ダブルクリックされた
-	//! @param		x		描画矩形内における x 位置(描画矩形の左上が原点)
-	//! @param		y		描画矩形内における y 位置(描画矩形の左上が原点)
+	// (Window→DrawDevice) 被双击
+	// x: 绘图矩形内的 x 位置（绘图矩形左上角为原点）
+	// y: 绘图矩形内的 y 位置（绘图矩形左上角为原点）
 	virtual void TJS_INTF_METHOD OnDoubleClick(tjs_int x, tjs_int y) = 0;
 
-	//! @brief		(Window→DrawDevice) マウスボタンが押下された
-	//! @param		x		描画矩形内における x 位置(描画矩形の左上が原点)
-	//! @param		y		描画矩形内における y 位置(描画矩形の左上が原点)
-	//! @param		mb		どのマウスボタンか
-	//! @param		flags	フラグ(TVP_SS_*定数の組み合わせ)
+	// (Window→DrawDevice) 鼠标按键被按下
+	// x: 绘图矩形内的 x 位置（绘图矩形左上角为原点）
+	// y: 绘图矩形内的 y 位置（绘图矩形左上角为原点）
+	// mb: 是哪个鼠标按键
+	// flags: 标志（TVP_SS_* 常量的组合）
 	virtual void TJS_INTF_METHOD OnMouseDown(tjs_int x, tjs_int y, tTVPMouseButton mb, tjs_uint32 flags) = 0;
 
-	//! @brief		(Window→DrawDevice) マウスボタンが離された
-	//! @param		x		描画矩形内における x 位置(描画矩形の左上が原点)
-	//! @param		y		描画矩形内における y 位置(描画矩形の左上が原点)
-	//! @param		mb		どのマウスボタンか
-	//! @param		flags	フラグ(TVP_SS_*定数の組み合わせ)
+	// (Window→DrawDevice) 鼠标按键被松开
+	// x: 绘图矩形内的 x 位置（绘图矩形左上角为原点）
+	// y: 绘图矩形内的 y 位置（绘图矩形左上角为原点）
+	// mb: 是哪个鼠标按键
+	// flags: 标志（TVP_SS_* 常量的组合）
 	virtual void TJS_INTF_METHOD OnMouseUp(tjs_int x, tjs_int y, tTVPMouseButton mb, tjs_uint32 flags) = 0;
 
-	//! @brief		(Window→DrawDevice) マウスが移動した
-	//! @param		x		描画矩形内における x 位置(描画矩形の左上が原点)
-	//! @param		y		描画矩形内における y 位置(描画矩形の左上が原点)
-	//! @param		flags	フラグ(TVP_SS_*定数の組み合わせ)
+	// (Window→DrawDevice) 鼠标移动了
+	// x: 绘图矩形内的 x 位置（绘图矩形左上角为原点）
+	// y: 绘图矩形内的 y 位置（绘图矩形左上角为原点）
+	// flags: 标志（TVP_SS_* 常量的组合）
 	virtual void TJS_INTF_METHOD OnMouseMove(tjs_int x, tjs_int y, tjs_uint32 flags) = 0;
 
-	//! @brief		(Window→DrawDevice) レイヤのマウスキャプチャを解放する
-	//! @note		レイヤのマウスキャプチャを解放すべき場合にウィンドウから呼ばれる。
-	//! @note		WindowReleaseCapture() と混同しないこと。
+	// (Window→DrawDevice) 释放图层的鼠标捕获
+	// 在应当释放图层鼠标捕获时由窗口调用。
+	// 注意不要与 WindowReleaseCapture() 混淆。
 	virtual void TJS_INTF_METHOD OnReleaseCapture() = 0;
 
-	//! @brief		(Window→DrawDevice) マウスが描画矩形外に移動した
+	// (Window→DrawDevice) 鼠标移动到绘图矩形外
 	virtual void TJS_INTF_METHOD OnMouseOutOfWindow() = 0;
 
-	//! @brief		(Window→DrawDevice) キーが押された
-	//! @param		key		仮想キーコード
-	//! @param		shift	シフトキーの状態
+	// (Window→DrawDevice) 按键被按下
+	// key: 虚拟键码
+	// shift: Shift 键的状态
 	virtual void TJS_INTF_METHOD OnKeyDown(tjs_uint key, tjs_uint32 shift) = 0;
 
-	//! @brief		(Window→DrawDevice) キーが離された
-	//! @param		key		仮想キーコード
-	//! @param		shift	シフトキーの状態
+	// (Window→DrawDevice) 按键被松开
+	// key: 虚拟键码
+	// shift: Shift 键的状态
 	virtual void TJS_INTF_METHOD OnKeyUp(tjs_uint key, tjs_uint32 shift) = 0;
 
-	//! @brief		(Window→DrawDevice) キーによる入力
-	//! @param		key		文字コード
+	// (Window→DrawDevice) 按键输入
+	// key: 字符码
 	virtual void TJS_INTF_METHOD OnKeyPress(tjs_char key) = 0;
 
-	//! @brief		(Window→DrawDevice) マウスホイールが回転した
-	//! @param		shift	シフトキーの状態
-	//! @param		delta	回転角
-	//! @param		x		描画矩形内における x 位置(描画矩形の左上が原点)
-	//! @param		y		描画矩形内における y 位置(描画矩形の左上が原点)
+	// (Window→DrawDevice) 鼠标滚轮转动了
+	// shift: Shift 键的状态
+	// delta: 旋转角度
+	// x: 绘图矩形内的 x 位置（绘图矩形左上角为原点）
+	// y: 绘图矩形内的 y 位置（绘图矩形左上角为原点）
 	virtual void TJS_INTF_METHOD OnMouseWheel(tjs_uint32 shift, tjs_int delta, tjs_int x, tjs_int y) = 0;
 
-	//! @brief		(Window->DrawDevice) 入力状態のチェック
-	//! @note		ウィンドウから約1秒おきに、レイヤマネージャがユーザからの入力の状態を
-	//!				再チェックするために呼ばれる。レイヤ状態の変化がユーザの入力とは
-	//!				非同期に行われた場合、たとえばマウスカーソルの下にレイヤが出現した
-	//!				のにもかかわらず、マウスカーソルがそのレイヤの指定する形状に変更されない
-	//!				といった状況が発生しうる。このような状況に対処するため、ウィンドウから
-	//!				このメソッドが約1秒おきに呼ばれる。
+	// (Window->DrawDevice) 检查输入状态
+	// 窗口大约每 1 秒调用一次，以便图层管理器重新检查
+	// 用户输入的状态。当图层状态的变化与用户输入
+	// 异步发生时（例如鼠标光标下出现了图层），
+	// 但鼠标光标却没有变成该图层指定的形状，
+	// 这样的状况就可能发生。为了应对这种状况，
+	// 窗口会大约每 1 秒调用一次本方法。
 	virtual void TJS_INTF_METHOD RecheckInputState() = 0;
 
-	//! @brief		(LayerManager→DrawDevice) マウスカーソルの形状をデフォルトに戻す
-	//! @param		manager		レイヤマネージャ
-	//! @note		マウスカーソルの形状をデフォルトの物に戻したい場合に呼ばれる
+	// (LayerManager→DrawDevice) 将鼠标光标形状恢复为默认
+	// manager: 图层管理器
+	// 在希望将鼠标光标形状恢复为默认时调用
 	virtual void TJS_INTF_METHOD SetDefaultMouseCursor(iTVPLayerManager * manager) = 0;
 
-	//! @brief		(LayerManager→DrawDevice) マウスカーソルの形状を設定する
-	//! @param		manager		レイヤマネージャ
-	//! @param		cursor		マウスカーソル形状番号
+	// (LayerManager→DrawDevice) 设置鼠标光标形状
+	// manager: 图层管理器
+	// cursor: 鼠标光标形状编号
 	virtual void TJS_INTF_METHOD SetMouseCursor(iTVPLayerManager * manager, tjs_int cursor) = 0;
 
-	//! @brief		(LayerManager→DrawDevice) マウスカーソルの位置を取得する
-	//! @param		manager		レイヤマネージャ
-	//! @param		x			プライマリレイヤ上の座標におけるマウスカーソルのx位置
-	//! @param		y			プライマリレイヤ上の座標におけるマウスカーソルのy位置
-	//! @note		座標はプライマリレイヤ上の座標なので、必要ならば変換を行う
+	// (LayerManager→DrawDevice) 获取鼠标光标位置
+	// manager: 图层管理器
+	// x: 主图层上坐标中的鼠标光标 x 位置
+	// y: 主图层上坐标中的鼠标光标 y 位置
+	// 坐标是主图层上的坐标，必要时请进行转换
 	virtual void TJS_INTF_METHOD GetCursorPos(iTVPLayerManager * manager, tjs_int &x, tjs_int &y) = 0;
 
-	//! @brief		(LayerManager→DrawDevice) マウスカーソルの位置を設定する
-	//! @param		manager		レイヤマネージャ
-	//! @param		x			プライマリレイヤ上の座標におけるマウスカーソルのx位置
-	//! @param		y			プライマリレイヤ上の座標におけるマウスカーソルのy位置
-	//! @note		座標はプライマリレイヤ上の座標なので、必要ならば変換を行う
+	// (LayerManager→DrawDevice) 设置鼠标光标位置
+	// manager: 图层管理器
+	// x: 主图层上坐标中的鼠标光标 x 位置
+	// y: 主图层上坐标中的鼠标光标 y 位置
+	// 坐标是主图层上的坐标，必要时请进行转换
 	virtual void TJS_INTF_METHOD SetCursorPos(iTVPLayerManager * manager, tjs_int x, tjs_int y) = 0;
 
-	//! @brief		(LayerManager→DrawDevice) ウィンドウのマウスキャプチャを解放する
-	//! @param		manager		レイヤマネージャ
-	//! @note		ウィンドウのマウスキャプチャを解放すべき場合にレイヤマネージャから呼ばれる。
-	//! @note		ウィンドウのマウスキャプチャは OnReleaseCapture() で開放できるレイヤのマウスキャプチャ
-	//!				と異なることに注意。ウィンドウのマウスキャプチャは主にOSのウィンドウシステムの
-	//!				機能であるが、レイヤのマウスキャプチャは吉里吉里がレイヤマネージャごとに
-	//!				独自に管理している物である。このメソッドでは基本的には ::ReleaseCapture() などで
-	//!				マウスのキャプチャを開放する。
+	// (LayerManager→DrawDevice) 释放窗口的鼠标捕获
+	// manager: 图层管理器
+	// 在应当释放窗口鼠标捕获时由图层管理器调用。
+	// 窗口的鼠标捕获与可通过 OnReleaseCapture() 释放的图层鼠标捕获
+	// 不同，请注意。窗口的鼠标捕获主要是 OS 窗口系统的
+	// 功能，而图层的鼠标捕获是吉里吉里（Kirikiri）按每个图层管理器
+	// 独自管理的东西。本方法中基本上应通过 ::ReleaseCapture() 等
+	// 来释放鼠标捕获。
 	virtual void TJS_INTF_METHOD WindowReleaseCapture(iTVPLayerManager * manager) = 0;
 
-	//! @brief		(LayerManager→DrawDevice) ツールチップヒントを設定する
-	//! @param		manager		レイヤマネージャ
-	//! @param		text		ヒントテキスト(空文字列の場合はヒントの表示をキャンセルする)
+	// (LayerManager→DrawDevice) 设置工具提示
+	// manager: 图层管理器
+	// text: 提示文本（空字符串时取消提示的显示）
 	virtual void TJS_INTF_METHOD SetHintText(iTVPLayerManager * manager, const ttstr & text) = 0;
 
-	//! @brief		(LayerManager→DrawDevice) 注視ポイントの設定
-	//! @param		manager		レイヤマネージャ
-	//! @param		layer		フォント情報の含まれるレイヤ
-	//! @param		x			プライマリレイヤ上の座標における注視ポイントのx位置
-	//! @param		y			プライマリレイヤ上の座標における注視ポイントのy位置
-	//! @note		注視ポイントは通常キャレット位置のことで、そこにIMEのコンポジット・ウィンドウが
-	//!				表示されたり、ユーザ補助の拡大鏡がそこを拡大したりする。IMEがコンポジットウィンドウを
-	//!				表示したり、未確定の文字をそこに表示したりする際のフォントは layer パラメータ
-	//!				で示されるレイヤが持つ情報によるが、プラグインからその情報を得たり設定したり
-	//!				するインターフェースは今のところない。
-	//! @note		座標はプライマリレイヤ上の座標なので、必要ならば変換を行う。
+	// (LayerManager→DrawDevice) 设置注视点
+	// manager: 图层管理器
+	// layer: 包含字体信息的图层
+	// x: 主图层上坐标中的注视点 x 位置
+	// y: 主图层上坐标中的注视点 y 位置
+	// 注视点通常是光标（caret）位置，IME 的输入合成窗口会在那里显示，
+	// 或用户辅助的放大镜会放大该位置。IME 显示合成窗口
+	// 或在那里显示未确定字符时使用的字体，由 layer 参数
+	// 所指图层持有的信息决定，但目前没有接口可供插件获取或设置
+	// 该信息。
+	// 坐标是主图层上的坐标，必要时请进行转换。
 	virtual void TJS_INTF_METHOD SetAttentionPoint(iTVPLayerManager * manager, tTJSNI_BaseLayer *layer,
 							tjs_int l, tjs_int t) = 0;
 
-	//! @brief		(LayerManager→DrawDevice) 注視ポイントの解除
-	//! @param		manager		レイヤマネージャ
+	// (LayerManager→DrawDevice) 解除注视点
+	// manager: 图层管理器
 	virtual void TJS_INTF_METHOD DisableAttentionPoint(iTVPLayerManager * manager) = 0;
 
-	//! @brief		(LayerManager→DrawDevice) IMEモードの設定
-	//! @param		manager		レイヤマネージャ
-	//! @param		mode		IMEモード
+	// (LayerManager→DrawDevice) 设置 IME 模式
+	// manager: 图层管理器
+	// mode: IME 模式
 	virtual void TJS_INTF_METHOD SetImeMode(iTVPLayerManager * manager, tTVPImeMode mode) = 0;
 
-	//! @brief		(LayerManager→DrawDevice) IMEモードのリセット
-	//! @param		manager		レイヤマネージャ
+	// (LayerManager→DrawDevice) 重置 IME 模式
+	// manager: 图层管理器
 	virtual void TJS_INTF_METHOD ResetImeMode(iTVPLayerManager * manager) = 0;
 
-//---- プライマリレイヤ関連
-	//! @brief		(Window→DrawDevice) プライマリレイヤの取得
-	//! @return		プライマリレイヤ
-	//! @note		Window.primaryLayer が読み出された際にこのメソッドが呼ばれる。
-	//!				それ以外に呼ばれることはない。
+//---- 主图层関連
+	// (Window→DrawDevice) 获取主图层
+	// 主图层
+	// 在读取 Window.primaryLayer 时调用本方法。
+	// 除此之外不会被调用。
 	virtual tTJSNI_BaseLayer * TJS_INTF_METHOD GetPrimaryLayer() = 0;
 
-	//! @brief		(Window→DrawDevice) フォーカスのあるレイヤの取得
-	//! @return		フォーカスのあるレイヤ(NULL=フォーカスのあるレイヤがない場合)
-	//! @note		Window.focusedLayer が読み出された際にこのメソッドが呼ばれる。
-	//!				それ以外に呼ばれることはない。
+	// (Window→DrawDevice) 获取拥有焦点的图层
+	// 拥有焦点的图层（NULL 表示没有拥有焦点的图层）
+	// 在读取 Window.focusedLayer 时调用本方法。
+	// 除此之外不会被调用。
 	virtual tTJSNI_BaseLayer * TJS_INTF_METHOD GetFocusedLayer() = 0;
 
-	//! @brief		(Window→DrawDevice) フォーカスのあるレイヤの設定
-	//! @param		layer		フォーカスのあるレイヤ(NULL=フォーカスのあるレイヤがない状態にしたい場合)
-	//! @note		Window.focusedLayer が書き込まれた際にこのメソッドが呼ばれる。
-	//!				それ以外に呼ばれることはない。
+	// (Window→DrawDevice) 设置拥有焦点的图层
+	// layer: 拥有焦点的图层（NULL 表示希望设为没有拥有焦点的图层）
+	// 在写入 Window.focusedLayer 时调用本方法。
+	// 除此之外不会被调用。
 	virtual void TJS_INTF_METHOD SetFocusedLayer(tTJSNI_BaseLayer * layer) = 0;
 
 
 //---- 再描画関連
-	//! @brief		(Window→DrawDevice) 描画矩形の無効化の通知
-	//! @param		rect		描画矩形内の座標における、無効になった領域
-	//!							(描画矩形の左上が原点)
-	//! @note		描画矩形の一部あるいは全部が無効になった際にウィンドウから通知される。
-	//!				描画デバイスは、なるべく早い時期に無効になった部分を再描画すべきである。
+	// (Window→DrawDevice) 绘图矩形失效通知
+	// rect: 绘图矩形内坐标中已失效的区域
+	// （绘图矩形左上角为原点）
+	// 在绘图矩形的一部分或全部失效时由窗口通知。
+	// 绘图设备应尽快重绘已失效的部分。
 	virtual void TJS_INTF_METHOD RequestInvalidation(const tTVPRect & rect) = 0;
 
-	//! @brief		(Window→DrawDevice) 更新の要求
-	//! @note		描画矩形の内容を最新の状態に更新すべきタイミングで、ウィンドウから呼ばれる。
-	//!				iTVPWindow::RequestUpdate() を呼んだ後、システムが描画タイミングに入った際に
-	//!				呼ばれる。通常、描画デバイスはこのタイミングを利用してオフスクリーン
-	//!				サーフェースに画像を描画する。
+	// (Window→DrawDevice) 更新请求
+	// 在应当把绘图矩形内容更新为最新状态的时机，由窗口调用。
+	// 在调用 iTVPWindow::RequestUpdate() 之后、系统进入绘制时机时调用。
+	// 通常，绘图设备利用这个时机，在离屏
+	// 表面（surface）上绘制图像。
 	virtual void TJS_INTF_METHOD Update() = 0;
 
-	//! @brief		(Window->DrawDevice) 画像の表示
-	//! @note		オフスクリーンサーフェースに描画された画像を、オンスクリーンに表示する
-	//!				(あるいはフリップする) タイミングで呼ばれる。通常は Update の直後に
-	//!				呼ばれるが、VSync 待ちが有効になっている場合は Update 直後ではなく、
-	//!				VBlank 中に呼ばれる可能性がある。オフスクリーンサーフェースを
-	//!				使わない場合は無視してかまわない。
+	// (Window->DrawDevice) 显示图像
+	// 在把绘制到离屏表面的图像显示到屏幕上
+	// （或翻页 flip）的时机调用。通常在 Update 之后立即
+	// 调用，但若启用了 VSync 等待，则可能不是在 Update 之后立即调用，
+	// 而是在 VBlank（垂直消隐期）中调用。若不使用离屏表面，
+	// 可以忽略。
 	virtual void TJS_INTF_METHOD Show() = 0;
 
-//---- LayerManager からの画像受け渡し関連
-	//! @brief		(LayerManager->DrawDevice) ビットマップの描画を開始する
-	//! @param		manager		描画を開始するレイヤマネージャ
-	//! @note		レイヤマネージャから描画デバイスへ画像が転送される前に呼ばれる。
-	//!				このあと、NotifyBitmapCompleted() が任意の回数呼ばれ、最後に
-	//!				EndBitmapCompletion() が呼ばれる。
-	//!				必要ならば、このタイミングで描画デバイス側でサーフェースのロックなどを
-	//!				行うこと。
+//---- 来自 LayerManager 的图像传递相关
+	// (LayerManager->DrawDevice) 开始位图绘制
+	// manager: 开始绘制的图层管理器
+	// 在从图层管理器向绘图设备传送图像之前调用。
+	// 之后会调用任意次数的 NotifyBitmapCompleted()，最后调用
+	// EndBitmapCompletion()。
+	// 如有必要，可在这个时机由绘图设备侧进行表面的锁定等
+	// 操作。
 	virtual void TJS_INTF_METHOD StartBitmapCompletion(iTVPLayerManager * manager) = 0;
 
-	//! @brief		(LayerManager->DrawDevice) ビットマップの描画を通知する
-	//! @param		manager		画像の提供元のレイヤマネージャ
-	//! @param		x			プライマリレイヤ上の座標における画像の左端位置
-	//! @param		y			プライマリレイヤ上の座標における画像の上端位置
-	//! @param		bits		ビットマップデータ
-	//! @param		bitmapinfo	ビットマップの形式情報
-	//! @param		cliprect	bits のうち、どの部分を使って欲しいかの情報
-	//! @param		type		提供される画像が想定する合成モード
-	//! @param		opacity		提供される画像が想定する不透明度(0～255)
-	//! @note		レイヤマネージャが合成を完了し、結果を描画デバイスに描画してもらいたい際に
-	//!				呼ばれる。一つの更新が複数の矩形で構成される場合があるため、このメソッドは
-	//!				StartBitmapCompletion() と EndBitmapCompletion() の間に複数回呼ばれる可能性がある。
-	//!				基本的には、bits と bitmapinfo で表されるビットマップのうち、cliprect で
-	//!				示される矩形を x, y 位置に転送すればよいが、描画矩形の大きさに合わせた
-	//!				拡大や縮小などは描画デバイス側で面倒を見る必要がある。
+	// (LayerManager->DrawDevice) 通知位图绘制
+	// manager: 提供图像的图层管理器
+	// x: 主图层上坐标中的图像左端位置
+	// y: 主图层上坐标中的图像上端位置
+	// bits: 位图数据
+	// bitmapinfo: 位图的格式信息
+	// cliprect: 期望使用 bits 中哪一部分的信息
+	// type: 所提供图像假设的合成模式
+	// opacity: 所提供图像假设的不透明度（0～255）
+	// 在图层管理器完成合成、希望把结果绘制到绘图设备时调用。
+	// 一次更新可能由多个矩形构成，因此本方法可能在
+	// StartBitmapCompletion() 与 EndBitmapCompletion() 之间被多次调用。
+	// 基本上，只需把由 bits 与 bitmapinfo 表示的位图中、由 cliprect 指定的矩形
+	// 传送到 x、y 位置即可，但需要由绘图设备侧负责根据绘图矩形的大小
+	// 进行放大或缩小等处理。
 	virtual void TJS_INTF_METHOD NotifyBitmapCompleted(iTVPLayerManager * manager,
 		tjs_int x, tjs_int y, const void * bits, const BITMAPINFO * bitmapinfo,
 		const tTVPRect &cliprect, tTVPLayerType type, tjs_int opacity) = 0;
 
-	//! @brief		(LayerManager->DrawDevice) ビットマップの描画を終了する
-	//! @param		manager		描画を終了するレイヤマネージャ
+	// (LayerManager->DrawDevice) 结束位图绘制
+	// manager: 结束绘制的图层管理器
 	virtual void TJS_INTF_METHOD EndBitmapCompletion(iTVPLayerManager * manager) = 0;
 
-//---- デバッグ支援
-	//! @brief		(Window->DrawDevice) レイヤ構造をコンソールにダンプする
+//---- 调试支援
+	// (Window->DrawDevice) 将图层结构转储到控制台
 	virtual void TJS_INTF_METHOD DumpLayerStructure() = 0;
 
-	//! @brief		(Window->DrawDevice) 更新矩形の表示を行うかどうかを設定する
-	//! @param		b		表示を行うかどうか
-	//! @note		レイヤ表示機構が差分更新を行う際の矩形を表示し、
-	//!				差分更新の最適化に役立てるための支援機能。
-	//!				実装する必要はないが、実装することが望ましい。
+	// (Window->DrawDevice) 设置是否显示更新矩形
+	// b: 是否进行显示
+	// 显示图层显示机构进行差分更新时的矩形，
+	// 这是用于辅助差分更新优化的支援功能。
+	// 不强制实现，但建议实现。
 	virtual void TJS_INTF_METHOD SetShowUpdateRect(bool b) = 0;
 };
 //---------------------------------------------------------------------------

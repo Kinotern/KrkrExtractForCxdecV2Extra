@@ -9,52 +9,52 @@
 
 namespace Engine
 {
-    /// <summary>
-    /// Hxv4 索引中的单个文件条目。
-    /// 这里保留的是哈希路径和序号信息，真实文件名并不在纯哈希封包中。
-    /// </summary>
+    // <summary>
+    // Hxv4 索引中的单个文件条目。
+    // 这里保留的是哈希路径和序号信息，真实文件名并不在纯哈希封包中。
+    // </summary>
     class FileEntry
     {
     public:
-        /// <summary>
-        /// 文件夹Hash
-        /// </summary>
+        // <summary>
+        // 文件夹Hash
+        // </summary>
         unsigned __int8 DirectoryPathHash[8];
-        /// <summary>
-        /// 文件名Hash
-        /// </summary>
+        // <summary>
+        // 文件名Hash
+        // </summary>
         unsigned __int8 FileNameHash[32];
-        /// <summary>
-        /// 文件Key
-        /// </summary>
+        // <summary>
+        // 文件Key
+        // </summary>
         __int64 Key;
-        /// <summary>
-        /// 文件序号
-        /// </summary>
+        // <summary>
+        // 文件序号
+        // </summary>
         __int64 Ordinal;
 
-        /// <summary>
-        /// 获取合法性
-        /// </summary>
+        // <summary>
+        // 获取合法性
+        // </summary>
         bool IsVaild() const
         {
             return this->Ordinal >= 0i64;
         }
 
-        /// <summary>
-        /// 获取加密模式
-        /// </summary>
+        // <summary>
+        // 获取加密模式
+        // </summary>
         unsigned __int32 GetEncryptMode() const
         {
             return ((this->Ordinal & 0x0000FFFF00000000i64) >> 32);
         }
 
-        /// <summary>
-        /// 将 ordinal 的低位编码成 TVP 可接受的伪文件名。
-        /// 封包内部是按 ordinal 取流，因此这里不需要真实文件名。
-        /// <para>最多8字节 4个字符 3个Unicode字符 + 0结束符</para>
-        /// </summary>
-        /// <param name="retValue">字符返回值指针</param>
+        // <summary>
+        // 将 ordinal 的低位编码成 TVP 可接受的伪文件名。
+        // 封包内部是按 ordinal 取流，因此这里不需要真实文件名。
+        // <para>最多8字节 4个字符 3个Unicode字符 + 0结束符</para>
+        // </summary>
+        // <param name="retValue">字符返回值指针</param>
         void GetFakeName(wchar_t* retValue) const
         {
             wchar_t* fakeName = retValue;
@@ -109,98 +109,98 @@ namespace Engine
         ExtractCore& operator=(ExtractCore&&) = delete;
         ~ExtractCore();
 
-		/// <summary>
-		/// 设置资源输出路径
-		/// </summary>
-		/// <param name="directory">文件夹绝对路径</param>
+		// <summary>
+		// 设置资源输出路径
+		// </summary>
+		// <param name="directory">文件夹绝对路径</param>
 		void SetOutputDirectory(const std::wstring& directory);
 
-        /// <summary>
-        /// 设置日志输出路径
-        /// </summary>
-        /// <param name="directory">文件夹绝对路径</param>
+        // <summary>
+        // 设置日志输出路径
+        // </summary>
+        // <param name="directory">文件夹绝对路径</param>
         void SetLoggerDirectory(const std::wstring& directory);
 
-        /// <summary>
-        /// 设置进度回调
-        /// </summary>
-        /// <param name="callback">回调函数</param>
-        /// <param name="context">回调上下文</param>
+        // <summary>
+        // 设置进度回调
+        // </summary>
+        // <param name="callback">回调函数</param>
+        // <param name="context">回调上下文</param>
         void SetProgressCallback(tExtractProgressCallback callback, void* context);
 
-		/// <summary>
-		/// 初始化 (特征码找接口)
-		/// </summary>
-		/// <param name="codeVa">代码起始地址</param>
-		/// <param name="codeSize">代码大小</param>
+		// <summary>
+		// 初始化 (特征码找接口)
+		// </summary>
+		// <param name="codeVa">代码起始地址</param>
+		// <param name="codeSize">代码大小</param>
 		void Initialize(PVOID codeVa, DWORD codeSize);
-		/// <summary>
-		/// 检查是否已经初始化
-		/// </summary>
-		/// <returns>True已初始化 False未初始化</returns>
+		// <summary>
+		// 检查是否已经初始化
+		// </summary>
+		// <returns>True已初始化 False未初始化</returns>
 		bool IsInitialized();
-		/// <summary>
-		/// 使用默认输出目录解包
-		/// </summary>
-		/// <param name="packageFileName">封包名称</param>
+		// <summary>
+		// 使用默认输出目录解包
+		// </summary>
+		// <param name="packageFileName">封包名称</param>
 		bool ExtractPackage(const std::wstring& packageFileName, unsigned int taskId = 0u);
-        /// <summary>
-        /// 使用指定输出目录解包
-        /// </summary>
-        /// <param name="packagePath">封包路径</param>
-        /// <param name="outputDirectory">输出目录</param>
-        /// <param name="taskId">任务编号</param>
+        // <summary>
+        // 使用指定输出目录解包
+        // </summary>
+        // <param name="packagePath">封包路径</param>
+        // <param name="outputDirectory">输出目录</param>
+        // <param name="taskId">任务编号</param>
         bool ExtractPackageTo(const std::wstring& packagePath, const std::wstring& outputDirectory, unsigned int taskId);
 
 	private:
-		/// <summary>
-		/// 获取Hxv4文件表
-		/// </summary>
-		/// <param name="xp3PackagePath">封包绝对路径</param>
-		/// <param name="retValue">文件表数组</param>
+		// <summary>
+		// 获取Hxv4文件表
+		// </summary>
+		// <param name="xp3PackagePath">封包绝对路径</param>
+		// <param name="retValue">文件表数组</param>
 		void GetEntries(const tTJSString& xp3PackagePath, std::vector<FileEntry>& retValue);
 
-        /// <summary>
-        /// 创建资源流
-        /// </summary>
-        /// <param name="entry">文件表</param>
-        /// <param name="packageName">封包名</param>
-        /// <returns>IStream对象</returns>
+        // <summary>
+        // 创建资源流
+        // </summary>
+        // <param name="entry">文件表</param>
+        // <param name="packageName">封包名</param>
+        // <returns>IStream对象</returns>
         IStream* CreateStream(const FileEntry& entry, const tTJSString& packageStoragePath);
 
-        /// <summary>
-        /// 提取文件
-        /// </summary>
-        /// <param name="stream">流</param>
-        /// <param name="extractPath">提取路径</param>
-        /// <param name="relativePath">相对路径</param>
-        /// <returns>True提取成功 False失败</returns>
+        // <summary>
+        // 提取文件
+        // </summary>
+        // <param name="stream">流</param>
+        // <param name="extractPath">提取路径</param>
+        // <param name="relativePath">相对路径</param>
+        // <returns>True提取成功 False失败</returns>
         bool ExtractFile(IStream* stream, const std::wstring& extractPath, const std::wstring& relativePath);
 
-        /// <summary>
-        /// 尝试解密文本
-        /// </summary>
-        /// <param name="stream">资源流</param>
-        /// <param name="output">输出缓冲区</param>
-        /// <returns>True解密成功 False不是文本加密</returns>
+        // <summary>
+        // 尝试解密文本
+        // </summary>
+        // <param name="stream">资源流</param>
+        // <param name="output">输出缓冲区</param>
+        // <returns>True解密成功 False不是文本加密</returns>
         static bool TryDecryptText(IStream* stream, std::vector<uint8_t>& output);
 
-        /// <summary>
-        /// 解析封包为标准TVP存储路径
-        /// </summary>
-        /// <param name="packagePath">封包路径</param>
-        /// <returns>标准存储路径</returns>
+        // <summary>
+        // 解析封包为标准TVP存储路径
+        // </summary>
+        // <param name="packagePath">封包路径</param>
+        // <returns>标准存储路径</returns>
         static tTJSString ResolvePackageStoragePath(const std::wstring& packagePath);
 
-        /// <summary>
-        /// 写日志
-        /// </summary>
-        /// <param name="format">格式</param>
+        // <summary>
+        // 写日志
+        // </summary>
+        // <param name="format">格式</param>
         void WriteLog(const wchar_t* format, ...);
 
-        /// <summary>
-        /// 通知进度
-        /// </summary>
+        // <summary>
+        // 通知进度
+        // </summary>
         void NotifyProgress(unsigned int taskId,
                             const std::wstring& packagePath,
                             unsigned int state,

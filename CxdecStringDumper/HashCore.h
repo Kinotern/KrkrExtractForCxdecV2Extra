@@ -9,18 +9,18 @@
 namespace Engine
 {
 
-	/// <summary>
-	/// Hash接口
-	/// </summary>
+	// <summary>
+	// Hash接口
+	// </summary>
 	class IStringHasher
 	{
 	public:
 		//IStringHasher::Calculate接口  fastcall模拟thiscall
 		using tCalculate = tjs_int(__fastcall*)(IStringHasher* thisObj, void* unuseEdx, tTJSVariant* hashValueRet, const tTJSString* str, const tTJSString* seed);
 
-		/// <summary>
-		/// 虚表结构
-		/// </summary>
+		// <summary>
+		// 虚表结构
+		// </summary>
 		struct VptrTable
 		{
 			void* Destruct;			//析构
@@ -33,32 +33,32 @@ namespace Engine
 		tjs_int mSaltSize;	//盐大小   offset:0x08
 	public:
 		virtual ~IStringHasher() = 0;
-		/// <summary>
-		/// Hash计算
-		/// </summary>
-		/// <param name="hashValueRet">返回值</param>
-		/// <param name="str">字符串</param>
-		/// <param name="seed">种子</param>
-		/// <returns>Hash长度</returns>
+		// <summary>
+		// Hash计算
+		// </summary>
+		// <param name="hashValueRet">返回值</param>
+		// <param name="str">字符串</param>
+		// <param name="seed">种子</param>
+		// <returns>Hash长度</returns>
 		virtual tjs_int Calculate(tTJSVariant* hashValueRet, const tTJSString* str, const tTJSString* seed) = 0;
 
 	public:
-		/// <summary>
-		/// 获取盐的长度
-		/// </summary>
+		// <summary>
+		// 获取盐的长度
+		// </summary>
 		tjs_int GetSaltLength() const;
-		/// <summary>
-		/// 获取盐数据指针
-		/// </summary>
+		// <summary>
+		// 获取盐数据指针
+		// </summary>
 		const tjs_uint8* GetSaltBytes() const;
 
-		/// <summary>
-		/// 获取虚表指针 (Hook用)
-		/// </summary>
+		// <summary>
+		// 获取虚表指针 (Hook用)
+		// </summary>
 		VptrTable* GetVptrTable();
-		/// <summary>
-		/// 设置虚表指针 (Hook用)
-		/// </summary>
+		// <summary>
+		// 设置虚表指针 (Hook用)
+		// </summary>
 		void SetVptrTable(const VptrTable* vt);
 
 		IStringHasher() = delete;
@@ -68,9 +68,9 @@ namespace Engine
 		IStringHasher& operator=(IStringHasher&&) = delete;
 	};
 
-	/// <summary>
-	/// 文件路径Hash接口
-	/// </summary>
+	// <summary>
+	// 文件路径Hash接口
+	// </summary>
 	class PathNameHasher : public IStringHasher
 	{
 	private:
@@ -85,9 +85,9 @@ namespace Engine
 		PathNameHasher& operator=(PathNameHasher&&) = delete;
 	};
 
-	/// <summary>
-	/// 文件名Hash接口
-	/// </summary>
+	// <summary>
+	// 文件名Hash接口
+	// </summary>
 	class FileNameHasher : public IStringHasher
 	{
 	private:
@@ -172,35 +172,35 @@ namespace Engine
 
 	public:
 
-		/// <summary>
-		/// 设置Hash表输出路径
-		/// </summary>
-		/// <param name="directory">文件夹绝对路径</param>
+		// <summary>
+		// 设置Hash表输出路径
+		// </summary>
+		// <param name="directory">文件夹绝对路径</param>
 		void SetOutputDirectory(const std::wstring& directory);
 		void SetHashOutputDirectory(const std::wstring& directory);
 		void WriteDirectoryHash(const std::wstring& relativeDirPath, const std::wstring& hash);
 		void WriteFileNameHash(const std::wstring& fileName, const std::wstring& hash);
 
-		/// <summary>
-		/// 初始化 (特征码找接口)
-		/// </summary>
-		/// <param name="codeVa">代码起始地址</param>
-		/// <param name="codeSize">代码大小</param>
+		// <summary>
+		// 初始化 (特征码找接口)
+		// </summary>
+		// <param name="codeVa">代码起始地址</param>
+		// <param name="codeSize">代码大小</param>
 		void Initialize(PVOID codeVa, DWORD codeSize);
-		/// <summary>
-		/// 检查是否已经初始化
-		/// </summary>
-		/// <returns>True已初始化 False未初始化</returns>
+		// <summary>
+		// 检查是否已经初始化
+		// </summary>
+		// <returns>True已初始化 False未初始化</returns>
 		bool IsInitialized();
 
 
-		/// <summary>
-		/// 获取对象实例
-		/// </summary>
+		// <summary>
+		// 获取对象实例
+		// </summary>
 		static HashCore* GetInstance();
-		/// <summary>
-		/// 释放
-		/// </summary>
+		// <summary>
+		// 释放
+		// </summary>
 		static void Release();
 	};
 }

@@ -180,19 +180,18 @@ Loader 负责展示模块按钮、准备 UI、启动游戏并注入 DLL。
 - `加载运行时恢复Hash映射模块`
 - `加载Hook撞库恢复Hash映射模块`
 
-Hook 撞库恢复模块会弹出准备窗口，不会点击后立刻启动游戏。用户需要先确认：
+Hook 撞库恢复模块会弹出准备窗口，不会点击后立刻启动游戏。
 
-1. 纯 Hash 目录。
-2. Hash 输出目录。
-3. 补充 lst 映射。
-4. 候选目录表。
-5. 候选文件表。
+准备窗口按 4 步组织，必填项标注「必填」，底部状态行只显示校验结果（不重复上方输入）：
 
-然后用户可以：
+- 第 1 步 · 纯Hash目录（必填）：要恢复的纯 Hash 解包目录，通常是 `Extractor_Output`。
+- 第 2 步 · Hash输出目录（必填）：撞库结果 `HashRestore_RecoveredNames.lst` 的写入目录。
+- 第 3 步 · 候选表（必填）：候选目录表 / 候选文件表，至少填一个。两个按钮与本组字段放在一起：
+  - `从明文资源目录制作候选lst`：从纯 Hash 目录收集候选名，并写入 `StringHashDumper_Output`。
+  - `扫描最新候选`：自动填入最新的 `dirs_*.txt` 和 `files_*.txt`。
+- 第 4 步 · 补充lst映射（可选）：已有映射文件，会合并进最终结果。
 
-- 点击 `制作候选lst`：从纯 Hash 目录收集候选名，并写入 `StringHashDumper_Output`。
-- 点击 `重新扫描最新候选`：自动填入最新的 `dirs_*.txt` 和 `files_*.txt`。
-- 点击 `开始撞库`：启动游戏并注入 `CxdecHashRestore.dll`。
+确认后点击 `开始撞库`：启动游戏并注入 `CxdecHashRestore.dll`。
 
 点击 `开始撞库` 后，Loader 主窗口不会立刻关闭。它会复用主窗口中的进度条显示 Hook 撞库进度，并在完成后弹出成功提示。准备窗口本身会关闭，主窗口负责保留进度反馈。
 
@@ -420,22 +419,24 @@ Hash 输出目录通常是：
 
 ## 9. 编译命令
 
+推荐直接运行仓库根目录的 `build_cxdec.bat`（内部用 vswhere 定位 MSBuild，并带 `/p:PlatformToolset=v145`）。下面是等价的完整手动命令。
+
 完整 Debug x86 编译：
 
 ```powershell
-& 'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe' 'O:\Github\KrkrExtractForCxdecV2Extra\KrkrZCxdecV2.sln' /p:Configuration=Debug /p:Platform=x86 /m
+& 'D:\Program\VSStudioCode\Community\MSBuild\Current\Bin\MSBuild.exe' 'G:\Github\KrkrExtractForCxdecV2Extra\KrkrZCxdecV2.sln' /p:Configuration=Debug /p:Platform=x86 /m
 ```
 
 如需清理当前 Debug 目录下的链接副产物：
 
 ```cmd
-del /q "O:\Github\KrkrExtractForCxdecV2Extra\Debug\*.exp" "O:\Github\KrkrExtractForCxdecV2Extra\Debug\*.lib" "O:\Github\KrkrExtractForCxdecV2Extra\Debug\*.pdb"
+del /q "G:\Github\KrkrExtractForCxdecV2Extra\Debug\*.exp" "G:\Github\KrkrExtractForCxdecV2Extra\Debug\*.lib" "G:\Github\KrkrExtractForCxdecV2Extra\Debug\*.pdb"
 ```
 
 完整 Release x86 编译：
 
 ```powershell
-& 'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe' 'O:\Github\KrkrExtractForCxdecV2Extra\KrkrZCxdecV2.sln' /p:Configuration=Release /p:Platform=x86 /m
+& 'D:\Program\VSStudioCode\Community\MSBuild\Current\Bin\MSBuild.exe' 'G:\Github\KrkrExtractForCxdecV2Extra\KrkrZCxdecV2.sln' /p:Configuration=Release /p:Platform=x86 /m
 ```
 
 Release 发布目录结构：
@@ -448,15 +449,20 @@ Release\
     CxdecExtractorUI.dll
     CxdecStringDumper.dll
     CxdecHashRestore.dll
-    CxdecKeyDumper.dll
+    CxdecKeyDumper.dll   （已废弃，Loader 不再注入）
+    CxdecKeyStatic.dll
+    CxdecPeUnpacker.dll
+    CxdecAntiMalform.dll
+    steamapi_cra\
+      steam_api.dll
 ```
 
-Loader 统一通过 `CxdecExtractordll\模块名.dll` 查找功能模块，并保留同目录查找作为兼容回退。
+Loader 统一通过 `CxdecExtractordll\模块名.dll` 查找功能模块，并保留同目录查找作为兼容回退。`CxdecPeUnpacker.dll` 负责 SteamStub 检测与脱壳，`CxdecAntiMalform.dll` 负责脱壳后的运行时补丁注入，`steamapi_cra\steam_api.dll` 是替换游戏 steam_api.dll 用的破解 stub（由 CxdecPeUnpacker 项目构建后复制）。
 
 上传 GitHub 前建议检查：
 
 ```powershell
-Get-ChildItem -Path 'O:\Github\KrkrExtractForCxdecV2Extra\Debug' -File -ErrorAction SilentlyContinue |
+Get-ChildItem -Path 'G:\Github\KrkrExtractForCxdecV2Extra\Debug' -File -ErrorAction SilentlyContinue |
   Where-Object { $_.Extension -in '.exp','.lib','.pdb' } |
   Remove-Item -Force -ErrorAction SilentlyContinue
 ```

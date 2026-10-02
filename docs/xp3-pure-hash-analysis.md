@@ -40,10 +40,14 @@
 | 模块 | 职责 |
 | --- | --- |
 | `CxdecExtractorLoader` | 启动游戏并注入解包/Hash 采集 DLL |
+| `CxdecPeUnpacker` | 检测 SteamStub 保护壳并脱壳，输出 `_unp.exe` |
+| `CxdecAntiMalform` | 脱壳后注入的运行时补丁模块（TJS 字节码补丁、steam 标识替换） |
 | `CxdecExtractorUI` | 创建拖拽窗口，接收 XP3 文件并调用导出函数 `ExtractPackage` |
 | `CxdecExtractor` | 在游戏进程内定位 Cxdec/Hxv4 内部接口，读取索引并提取资源 |
 | `CxdecStringDumper` | Hook 游戏内部 Hash 计算接口，记录明文字符串与 Hash 的对应关系，并执行运行时恢复 |
 | `CxdecHashRestore` | Hook 撞库恢复 Hash 映射模块，批量补充 lst |
+| `CxdecKeyStatic` | 静态密钥提取（bres/zlib/资源解析，无需运行时钩子） |
+| `CxdecKeyDumper` | 动态密钥提取（运行时 Hook 捕获 Hx/Cx/Verify 数据）。**已废弃**：Loader 的「提取Key」按钮不再注入它，密钥提取已统一走 `CxdecKeyStatic` 静态流程；项目保留但无入口调用 |
 | `Common` | 提供路径、目录、日志、文件、PE 特征搜索等基础能力 |
 
 ### 3.2 端到端流程图
@@ -51,7 +55,7 @@
 ```mermaid
 flowchart TD
     A[用户拖拽游戏 EXE 到 Loader] --> B[Loader 选择注入模块]
-    B --> C[DetourCreateProcessWithDllW 注入 DLL]
+    B --> C[CreateProcessW(CREATE_SUSPENDED) + CreateRemoteThread(LoadLibraryW) 注入 DLL]
     C --> D[游戏进程加载 TVP/Cxdec 相关模块]
     D --> E[Hook GetProcAddress 捕获 V2Link]
     E --> F[初始化 TVP Import Stub]
@@ -87,7 +91,7 @@ flowchart TD
 
 ### 4.2 注入与接口定位原理
 
-`CxdecExtractorLoader` 使用 `DetourCreateProcessWithDllW` 启动目标 EXE，并把 `CxdecExtractorUI.dll` 或 `CxdecStringDumper.dll` 注入新进程。其本质是“启动时注入”，而不是在目标进程运行后再附加。
+`CxdecExtractorLoader` 使用 `CreateProcessW(CREATE_SUSPENDED)` 挂起启动目标 EXE，再通过 `CreateRemoteThread(LoadLibraryW)` 把 `CxdecExtractorUI.dll` 或 `CxdecStringDumper.dll` 注入新进程。其本质是“启动时注入”，而不是在目标进程运行后再附加。
 
 核心代码路径：
 
@@ -309,7 +313,7 @@ ch = ((ch & 0xaaaaaaaa) >> 1) | ((ch & 0x55555555) << 1);
 1. 用户把游戏 EXE 拖到 `CxdecExtractorLoader.exe`。
 2. Loader 解析命令行拿到目标游戏路径。
 3. 用户在对话框中选择“加载解包模块”“加载运行时恢复Hash映射模块”或“加载Hook撞库恢复Hash映射模块”。
-4. Loader 调用 `DetourCreateProcessWithDllW()`，创建带注入 DLL 的游戏进程。
+4. Loader 调用 `CreateProcessW(CREATE_SUSPENDED)` + `CreateRemoteThread(LoadLibraryW)`，创建带注入 DLL 的游戏进程。
 
 ### 步骤 2：等待 TVP/Cxdec 初始化
 
@@ -561,20 +565,14 @@ fileTable.WriteUnicode(L"%s%s%s%s%s%s%s\r\n",
 
 ### 8.3 更严格的边界检查
 
-当前代码直接执行：
+此项已实现。当前 `GetEntries()` 在 `memcpy` 前先校验长度，不满足 8/32 就记录日志并跳过条目：
 
 ```cpp
-memcpy(entry.DirectoryPathHash, dirHash->GetData(), dirHash->GetLength());
-memcpy(entry.FileNameHash, fileNameHash->GetData(), fileNameHash->GetLength());
+if (dirHash == nullptr || dirHash->GetLength() != 8u) { /* 记录日志并跳过 */ }
+if (fileNameHash == nullptr || fileNameHash->GetLength() != 32u) { /* 记录日志并跳过 */ }
+memcpy(entry.DirectoryPathHash, dirHash->GetData(), sizeof(entry.DirectoryPathHash));
+memcpy(entry.FileNameHash, fileNameHash->GetData(), sizeof(entry.FileNameHash));
 ```
-
-这里默认相信返回长度一定分别是 8 和 32。若遇到版本差异、损坏数据或异常对象，理论上存在越界写风险。
-
-建议：
-
-- 显式检查 `dirHash->GetLength() == 8`
-- 显式检查 `fileNameHash->GetLength() == 32`
-- 异常时记录日志并跳过条目
 
 ### 8.4 改善路径处理
 

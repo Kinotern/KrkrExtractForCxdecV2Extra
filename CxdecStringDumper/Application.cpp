@@ -6,9 +6,9 @@
 
 namespace Engine
 {
-    /// <summary>
-    /// 单实例
-    /// </summary>
+    // <summary>
+    // 单实例
+    // </summary>
     static Application* g_Instance = nullptr;
 
     //Hook插件功能

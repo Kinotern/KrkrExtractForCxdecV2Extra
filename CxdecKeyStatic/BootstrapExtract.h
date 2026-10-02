@@ -7,7 +7,7 @@
 
 namespace Bootstrap {
 
-/// 提取的BOOTSTRAP DLL元数据，供FilterManager派生使用。
+// 提取的BOOTSTRAP DLL元数据，供FilterManager派生使用。
 struct BootstrapConfig {
     std::wstring unique;      // UNIQUE string from DLL
     std::wstring warning;     // WARNING string from DLL (appended to prefix)
@@ -18,8 +18,8 @@ struct BootstrapConfig {
     bool ok;
 };
 
-/// 解密（bres）、解压（zlib）、解析BOOTSTRAP DLL。
-/// @param archive_seed_rva 可选的RVA（0=跳过，使用默认值0）
+// 解密（bres）、解压（zlib）、解析BOOTSTRAP DLL。
+// archive_seed_rva: 可选的RVA（0=跳过，使用默认值0）
 BootstrapConfig extract_bootstrap(
     const uint8_t* bootstrap_ct, size_t ct_len,
     const std::wstring& bootstrap_path,

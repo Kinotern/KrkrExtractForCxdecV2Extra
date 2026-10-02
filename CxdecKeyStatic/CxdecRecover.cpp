@@ -4,6 +4,7 @@
 #include "Tjs2Decompile.h"
 #include "BootstrapExtract.h"
 #include "FilterManager.h"
+#include "Hxv4p.h"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
@@ -585,6 +586,43 @@ bool recover_drip_program(const std::wstring& exe_path,
         }
     }
 
+    // 写入_drip_program.hxv4p（二进制容器，体积约为 JSON 的 1/7）
+    {
+        std::wstring hxv4p_path = output_dir + L"\\" + exe_stem + L"_drip_program.hxv4p";
+
+        Hxv4p::Parameters hp;
+        hp.source_module = ws2utf8(prog.source_module);
+        hp.source_module_base = (uint32_t)prog.source_module_base;
+        hp.manager_va = (uint32_t)prog.manager_va;
+        hp.context_va = (uint32_t)prog.context_va;
+        hp.drip_impl_va = (uint32_t)prog.drip_impl_va;
+        std::memcpy(hp.hxv4_key, prog.hxv4_key.data(), sizeof(hp.hxv4_key));
+        std::memcpy(hp.hxv4_nonce0, prog.hxv4_nonce0.data(), sizeof(hp.hxv4_nonce0));
+        std::memcpy(hp.hxv4_nonce1, prog.hxv4_nonce1.data(), sizeof(hp.hxv4_nonce1));
+        std::memcpy(hp.hash_key, prog.hash_key.data(), sizeof(hp.hash_key));
+        hp.holder_words.assign(prog.holder_words.begin(), prog.holder_words.end());
+        hp.context_u32 = prog.context_u32;
+        for (const auto& lane : prog.lanes) {
+            Hxv4p::Lane out_lane;
+            out_lane.reserve(lane.size());
+            for (const auto& rec : lane) {
+                out_lane.push_back(Hxv4p::LaneRecord{rec.first, rec.second});
+            }
+            hp.lanes.push_back(std::move(out_lane));
+        }
+        Hxv4p::NormalizeLanesToRva(hp.lanes, hp.source_module_base);
+
+        std::string hxv4p_error;
+        std::vector<uint8_t> hxv4p_blob = Hxv4p::Encode(hp, true, hxv4p_error);
+        if (!hxv4p_blob.empty()) {
+            FILE* fh = _wfopen(hxv4p_path.c_str(), L"wb");
+            if (fh) {
+                fwrite(hxv4p_blob.data(), 1, hxv4p_blob.size(), fh);
+                fclose(fh);
+            }
+        }
+    }
+
     // 写入_static_recover.summary.json
     {
         std::wstring sum_path = output_dir + L"\\" + exe_stem + L"_static_recover.summary.json";
@@ -597,7 +635,8 @@ bool recover_drip_program(const std::wstring& exe_path,
             fprintf(fs, "  \"bootstrap_url\": \"bres://./%s/bootstrap\",\n", bkey_utf8.c_str());
             fprintf(fs, "  \"outputs\": {\n");
             fprintf(fs, "    \"dll\": \"%s\\\\bootstrap.dll\",\n", out_utf8.c_str());
-            fprintf(fs, "    \"drip_program\": \"%s\\\\%s_drip_program.json\"\n", out_utf8.c_str(), stem_utf8.c_str());
+            fprintf(fs, "    \"drip_program\": \"%s\\\\%s_drip_program.json\",\n", out_utf8.c_str(), stem_utf8.c_str());
+            fprintf(fs, "    \"drip_program_hxv4p\": \"%s\\\\%s_drip_program.hxv4p\"\n", out_utf8.c_str(), stem_utf8.c_str());
             fprintf(fs, "  },\n");
             fprintf(fs, "  \"startup_key\": \"%s\",\n", skey_utf8.c_str());
             fprintf(fs, "  \"warning\": \"%s\"\n", warning_utf8.c_str());

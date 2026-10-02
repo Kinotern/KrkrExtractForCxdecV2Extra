@@ -90,12 +90,19 @@
     <Lib>
       <SubSystem>Windows</SubSystem>
     </Lib>
+    <Link>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+    </Link>
+    <PostBuildEvent>
+      <Command>del "$(OutDir)CxdecKeyStatic.lib" "$(OutDir)CxdecKeyStatic.exp" 2&gt;nul</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="BresDecrypt.cpp" />
     <ClCompile Include="BootstrapExtract.cpp" />
     <ClCompile Include="CxdecRecover.cpp" />
     <ClCompile Include="FilterManager.cpp" />
+    <ClCompile Include="Hxv4p.cpp" />
     <ClCompile Include="PeResource.cpp" />
     <ClCompile Include="Tjs2Decompile.cpp" />
     <ClCompile Include="Crypto\ChaCha.cpp" />
@@ -109,6 +116,7 @@
     <ClInclude Include="BootstrapExtract.h" />
     <ClInclude Include="CxdecRecover.h" />
     <ClInclude Include="FilterManager.h" />
+    <ClInclude Include="Hxv4p.h" />
     <ClInclude Include="PeResource.h" />
     <ClInclude Include="Tjs2Decompile.h" />
     <ClInclude Include="Crypto\ChaCha.h" />

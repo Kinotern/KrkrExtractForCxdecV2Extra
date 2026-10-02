@@ -152,7 +152,7 @@ static bool PatchAndWrite(const wchar_t* origPath, const wchar_t* crackPath,
 
     {
         const char steamStr[] = "steam=\"yes\"";
-        const char steamRepl  = 'r';
+        const char steamRepl  = 'a';
         if (!KmpMemcpyPatch(exeData, exeSize,
                             reinterpret_cast<const uint8_t*>(steamStr), sizeof(steamStr) - 1,
                             reinterpret_cast<const uint8_t*>(&steamRepl), 1)) {

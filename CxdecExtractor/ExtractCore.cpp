@@ -475,7 +475,7 @@ namespace Engine
 				return false;
 			}
 
-			std::vector<wchar_t> buffer(count);
+			std::vector<wchar_t> buffer(count + 1);
 			StreamUtils::IStreamEx::Read(stream, buffer.data(), (ULONG)size);
 
 			if (mode == 0)

@@ -71,8 +71,10 @@ uint32_t PeReader::RvaToOffset(uint32_t rva) const
     if (!m_ntHeaders) return 0;
     auto* sections = IMAGE_FIRST_SECTION(m_ntHeaders);
     for (WORD i = 0; i < m_ntHeaders->FileHeader.NumberOfSections; ++i) {
+        uint32_t vsize = sections[i].Misc.VirtualSize;
+        if (vsize == 0) vsize = sections[i].SizeOfRawData;
         if (rva >= sections[i].VirtualAddress &&
-            rva < sections[i].VirtualAddress + sections[i].Misc.VirtualSize) {
+            rva < sections[i].VirtualAddress + vsize) {
             return rva - sections[i].VirtualAddress + sections[i].PointerToRawData;
         }
     }

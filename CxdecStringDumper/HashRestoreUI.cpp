@@ -138,16 +138,19 @@ namespace
 
     std::wstring FormatString(const wchar_t* format, ...)
     {
-        wchar_t buffer[1024]{};
         va_list ap;
         va_start(ap, format);
-        int count = _vsnwprintf_s(buffer, _countof(buffer), _TRUNCATE, format, ap);
+        int count = _vscwprintf(format, ap);
         va_end(ap);
         if (count <= 0)
         {
             return std::wstring();
         }
-        return std::wstring(buffer, count);
+        std::wstring buffer(static_cast<size_t>(count), L'\0');
+        va_start(ap, format);
+        _vsnwprintf_s(&buffer[0], buffer.size() + 1, _TRUNCATE, format, ap);
+        va_end(ap);
+        return buffer;
     }
 
     std::wstring CombinePath(const std::wstring& directory, const std::wstring& fileName)

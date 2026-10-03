@@ -1069,11 +1069,13 @@ namespace
         std::wstring apiBak = api + L".bak";
         std::wstring crackedApi = loaderDir + L"CxdecExtractordll\\steamapi_cra\\steam_api.dll";
 
-        // 破解版 dll 缺失时不碰游戏目录里的 steam_api.dll
-        if (::GetFileAttributesW(crackedApi.c_str()) != INVALID_FILE_ATTRIBUTES)
+        // 只有「游戏目录本来就有 steam_api.dll」**且**「破解版 dll 存在」时才替换。
+        // 缺任一个都什么都不做——不能在非 Steam 游戏的目录里凭空造一个 steam_api.dll。
+        const bool haveCracked = (::GetFileAttributesW(crackedApi.c_str()) != INVALID_FILE_ATTRIBUTES);
+        const bool haveGameApi = (::GetFileAttributesW(api.c_str()) != INVALID_FILE_ATTRIBUTES);
+        if (haveCracked && haveGameApi)
         {
-            if (::GetFileAttributesW(apiBak.c_str()) == INVALID_FILE_ATTRIBUTES &&
-                ::GetFileAttributesW(api.c_str()) != INVALID_FILE_ATTRIBUTES)
+            if (::GetFileAttributesW(apiBak.c_str()) == INVALID_FILE_ATTRIBUTES)
             {
                 ::MoveFileW(api.c_str(), apiBak.c_str());
                 LoaderLog(L"[Loader] Backed up steam_api.dll -> .bak");
@@ -1092,7 +1094,8 @@ namespace
         }
         else
         {
-            LoaderLog(L"[Loader] WARNING: cracked steam_api.dll missing, skip swap");
+            LoaderLog(haveGameApi ? L"[Loader] WARNING: cracked steam_api.dll missing, skip swap"
+                                  : L"[Loader] no steam_api.dll in game dir, skip swap");
         }
 
         if (packed)

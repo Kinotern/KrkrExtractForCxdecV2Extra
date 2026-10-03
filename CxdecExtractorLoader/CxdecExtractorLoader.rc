@@ -74,6 +74,16 @@ BEGIN
     LTEXT           "0%",IDC_KeyProgressText,214,129,20,10
 END
 
+// 双击启动时先弹出的独立拖放窗口；拿到 exe 后就关掉，与功能窗口互不干扰。
+IDD_SelectExe DIALOGEX 0, 0, 220, 84
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "CxdecExtractorLoader"
+FONT 9, "微软雅黑", 400, 0, 0x86
+BEGIN
+    LTEXT           "把游戏主程序（.exe）拖到这里",IDC_DropZone,15,20,190,18,SS_CENTER
+    PUSHBUTTON      "浏览...",IDC_BrowseExe,75,50,70,15
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //

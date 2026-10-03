@@ -999,6 +999,360 @@ namespace
             ::MessageBoxA(hwnd, errorBuf[0] ? errorBuf : "Unknown error", "CxdecExtractorLoader", MB_OK | MB_ICONERROR);
         }
     }
+
+    // ---------- 目标 EXE 导入 ----------
+
+    void LoaderLog(const wchar_t* text)
+    {
+        ::OutputDebugStringW(text);
+        std::wstring path = Path::GetDirectoryName(g_LoaderFullPath) + L"\\CxdecExtractorLoader.log";
+        FILE* f = nullptr;
+        _wfopen_s(&f, path.c_str(), L"a");
+        if (f)
+        {
+            fwprintf(f, L"%s\n", text);
+            fclose(f);
+        }
+    }
+
+    // 检测并处理 SteamStub 保护壳。
+    // 返回 true 表示本次运行已交给脱壳流程（无论用户确认还是取消），调用方应关闭窗口并退出。
+    bool RunSteamStubPrecheck(HWND owner, const std::wstring& exePath)
+    {
+        if (exePath.empty())
+        {
+            return false;
+        }
+
+        std::wstring loaderDir = Path::GetDirectoryName(g_LoaderFullPath) + L"\\";
+        HMODULE hUnp = ::LoadLibraryW((loaderDir + L"CxdecExtractordll\\CxdecPeUnpacker.dll").c_str());
+        if (!hUnp)
+        {
+            LoaderLog(L"[Loader] Cannot load CxdecPeUnpacker.dll");
+            return false;
+        }
+
+        auto D = (bool(*)(const wchar_t*))::GetProcAddress(hUnp, "CxdecPeUnpacker_Detect");
+        auto P = (bool(*)(const wchar_t*, const wchar_t*))::GetProcAddress(hUnp, "CxdecPeUnpacker_Process");
+
+        LoaderLog(L"[Loader] Checking SteamStub...");
+        if (!D || !P || !D(exePath.c_str()))
+        {
+            LoaderLog(L"[Loader] Not packed or detect failed");
+            ::FreeLibrary(hUnp);
+            return false;
+        }
+
+        LoaderLog(L"[Loader] SteamStub detected");
+        if (IDYES != ::MessageBoxW(owner,
+                                   L"检测到 SteamStub 保护壳，需要脱壳处理。\n\n是 - 脱壳并打补丁\n否 - 退出",
+                                   L"检测到保护壳", MB_YESNO | MB_ICONQUESTION))
+        {
+            LoaderLog(L"[Loader] User cancelled");
+            ::FreeLibrary(hUnp);
+            return true;
+        }
+
+        LoaderLog(L"[Loader] User confirmed");
+        std::wstring gameDir = Path::GetDirectoryName(exePath) + L"\\";
+        std::wstring stem = exePath;
+        size_t dot = stem.rfind(L'.');
+        if (dot != std::wstring::npos)
+        {
+            stem = stem.substr(0, dot);
+        }
+        std::wstring unpacked = stem + L"_unp.exe";
+        std::wstring api = gameDir + L"steam_api.dll";
+        std::wstring apiBak = api + L".bak";
+        std::wstring crackedApi = loaderDir + L"CxdecExtractordll\\steamapi_cra\\steam_api.dll";
+
+        // 仅当破解版 dll 存在时才动原版，避免部署缺失把游戏目录改坏。
+        if (::GetFileAttributesW(crackedApi.c_str()) != INVALID_FILE_ATTRIBUTES)
+        {
+            if (::GetFileAttributesW(apiBak.c_str()) == INVALID_FILE_ATTRIBUTES &&
+                ::GetFileAttributesW(api.c_str()) != INVALID_FILE_ATTRIBUTES)
+            {
+                ::MoveFileW(api.c_str(), apiBak.c_str());
+                LoaderLog(L"[Loader] Backed up steam_api.dll -> .bak");
+            }
+
+            if (!::CopyFileW(crackedApi.c_str(), api.c_str(), FALSE))
+            {
+                // 拷贝失败则回滚：原版已移走、新 dll 又没到位时恢复。
+                if (::GetFileAttributesW(apiBak.c_str()) != INVALID_FILE_ATTRIBUTES &&
+                    ::GetFileAttributesW(api.c_str()) == INVALID_FILE_ATTRIBUTES)
+                {
+                    ::MoveFileW(apiBak.c_str(), api.c_str());
+                }
+                LoaderLog(L"[Loader] FAIL: steam_api.dll replace failed");
+            }
+        }
+        else
+        {
+            LoaderLog(L"[Loader] WARNING: cracked steam_api.dll missing, skip swap");
+        }
+
+        LoaderLog(L"[Loader] Unpacking...");
+        if (!P(exePath.c_str(), unpacked.c_str()))
+        {
+            LoaderLog(L"[Loader] FAIL: unpack");
+            ::FreeLibrary(hUnp);
+            return true;
+        }
+
+        LoaderLog(L"[Loader] Unpack OK, injecting...");
+        std::wstring dll = loaderDir + L"CxdecExtractordll\\CxdecAntiMalform.dll";
+        std::wstring cmd = L"\"" + unpacked + L"\"";
+        std::vector<wchar_t> cmdline(cmd.begin(), cmd.end());
+        cmdline.push_back(L'\0');
+
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi{};
+        if (::CreateProcessW(unpacked.c_str(), cmdline.data(), nullptr, nullptr, FALSE,
+                             CREATE_SUSPENDED, nullptr, gameDir.c_str(), &si, &pi))
+        {
+            LoaderLog(L"[Loader] Process created suspended");
+            uint8_t detourData[0x678] = {};
+            *(uint32_t*)detourData = 0x678;
+            CreateDetourSection(pi.hProcess, detourData, sizeof(detourData));
+
+            SIZE_T bytes = (dll.length() + 1) * sizeof(wchar_t);
+            LPVOID remote = ::VirtualAllocEx(pi.hProcess, nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (remote)
+            {
+                ::WriteProcessMemory(pi.hProcess, remote, dll.c_str(), bytes, nullptr);
+                auto* loadLibrary = (LPTHREAD_START_ROUTINE)::GetProcAddress(
+                    ::GetModuleHandleW(L"kernel32.dll"), "LoadLibraryW");
+                HANDLE thread = ::CreateRemoteThread(pi.hProcess, nullptr, 0, loadLibrary, remote, 0, nullptr);
+                if (thread)
+                {
+                    ::WaitForSingleObject(thread, INFINITE);
+                    ::CloseHandle(thread);
+                    LoaderLog(L"[Loader] DLL injected");
+                }
+                else
+                {
+                    LoaderLog(L"[Loader] FAIL: CreateRemoteThread");
+                }
+                ::VirtualFreeEx(pi.hProcess, remote, 0, MEM_RELEASE);
+            }
+            else
+            {
+                LoaderLog(L"[Loader] FAIL: VirtualAllocEx");
+            }
+
+            ::ResumeThread(pi.hThread);
+            LoaderLog(L"[Loader] Process resumed");
+            ::WaitForSingleObject(pi.hProcess, INFINITE);
+            ::CloseHandle(pi.hProcess);
+            ::CloseHandle(pi.hThread);
+            ::DeleteFileW(unpacked.c_str());
+            LoaderLog(L"[Loader] Cleaned temp file");
+
+            ::MessageBoxW(owner,
+                          FormatString(L"脱壳及补丁注入完成。\n\n已生成：\n%s_crack.exe\n\n"
+                                       L"请把它拖到本程序上继续。", stem.c_str()).c_str(),
+                          L"脱壳完成", MB_OK | MB_ICONINFORMATION);
+        }
+        else
+        {
+            LoaderLog(L"[Loader] FAIL: CreateProcess");
+        }
+
+        ::FreeLibrary(hUnp);
+        return true;
+    }
+
+    std::wstring BrowseForExe(HWND owner)
+    {
+        std::wstring result;
+        HRESULT coInit = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
+        IFileOpenDialog* dialog = nullptr;
+        if (SUCCEEDED(::CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog))) && dialog)
+        {
+            DWORD options = 0u;
+            if (SUCCEEDED(dialog->GetOptions(&options)))
+            {
+                dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST);
+            }
+            dialog->SetTitle(L"选择游戏主程序");
+
+            COMDLG_FILTERSPEC filters[] =
+            {
+                { L"可执行文件", L"*.exe" },
+                { L"所有文件", L"*.*" }
+            };
+            dialog->SetFileTypes(_countof(filters), filters);
+
+            if (SUCCEEDED(dialog->Show(owner)))
+            {
+                IShellItem* item = nullptr;
+                if (SUCCEEDED(dialog->GetResult(&item)) && item)
+                {
+                    PWSTR path = nullptr;
+                    if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path)
+                    {
+                        result = path;
+                        ::CoTaskMemFree(path);
+                    }
+                    item->Release();
+                }
+            }
+            dialog->Release();
+        }
+
+        if (SUCCEEDED(coInit))
+        {
+            ::CoUninitialize();
+        }
+        return result;
+    }
+
+    // 子控件默认不接收 WM_DROPFILES，会把拖放挡掉。
+    // 让每个子控件也接受拖放并原样转交给对话框，实现"窗口任意位置都能放下"。
+    LRESULT CALLBACK ForwardDropToParent(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                                         UINT_PTR /*idSubclass*/, DWORD_PTR refData)
+    {
+        if (msg == WM_DROPFILES)
+        {
+            ::SendMessageW((HWND)refData, WM_DROPFILES, wParam, lParam);
+            return 0;
+        }
+        return ::DefSubclassProc(hwnd, msg, wParam, lParam);
+    }
+
+    void EnableDropOnWindowAndChildren(HWND hwnd)
+    {
+        ::DragAcceptFiles(hwnd, TRUE);
+        for (HWND child = ::GetWindow(hwnd, GW_CHILD); child; child = ::GetWindow(child, GW_HWNDNEXT))
+        {
+            ::DragAcceptFiles(child, TRUE);
+            ::SetWindowSubclass(child, ForwardDropToParent, 0u, (DWORD_PTR)hwnd);
+        }
+    }
+
+    // 校验拖入/选中的路径能不能当游戏主程序用。
+    bool IsUsableGameExe(HWND owner, const std::wstring& path)
+    {
+        if (path.empty())
+        {
+            return false;
+        }
+
+        DWORD attributes = ::GetFileAttributesW(path.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY))
+        {
+            ::MessageBoxW(owner, FormatString(L"无法读取该文件：\r\n%s", path.c_str()).c_str(),
+                          L"CxdecExtractorLoader", MB_OK | MB_ICONERROR);
+            return false;
+        }
+
+        if (_wcsicmp(Path::GetExtension(path).c_str(), L".exe") != 0)
+        {
+            ::MessageBoxW(owner, L"请拖入游戏主程序（.exe 文件）。",
+                          L"CxdecExtractorLoader", MB_OK | MB_ICONWARNING);
+            return false;
+        }
+
+        if (!g_LoaderFullPath.empty() && _wcsicmp(path.c_str(), g_LoaderFullPath.c_str()) == 0)
+        {
+            ::MessageBoxW(owner, L"这是启动器自身，请选择游戏主程序。",
+                          L"CxdecExtractorLoader", MB_OK | MB_ICONWARNING);
+            return false;
+        }
+
+        return true;
+    }
+
+    // ---------- 双击启动时的独立拖放窗口 ----------
+
+    struct SelectExeContext
+    {
+        std::wstring Chosen;
+    };
+
+    INT_PTR CALLBACK SelectExeDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+    {
+        SelectExeContext* context = (SelectExeContext*)::GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+
+        switch (msg)
+        {
+            case WM_INITDIALOG:
+            {
+                context = (SelectExeContext*)lParam;
+                ::SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)context);
+                EnableDropOnWindowAndChildren(hwnd);
+                return TRUE;
+            }
+            case WM_DROPFILES:
+            {
+                HDROP drop = (HDROP)wParam;
+                const UINT count = ::DragQueryFileW(drop, 0xFFFFFFFFu, nullptr, 0u);
+                std::wstring path;
+                if (count > 0u)
+                {
+                    const UINT length = ::DragQueryFileW(drop, 0u, nullptr, 0u);
+                    path.resize((size_t)length + 1u, L'\0');
+                    ::DragQueryFileW(drop, 0u, &path[0], length + 1u);
+                    path.resize((size_t)length);
+                }
+                ::DragFinish(drop);
+
+                if (count > 1u)
+                {
+                    ::MessageBoxW(hwnd, L"一次只能处理一个游戏主程序，已取用第一个。",
+                                  L"CxdecExtractorLoader", MB_OK | MB_ICONINFORMATION);
+                }
+                if (context && IsUsableGameExe(hwnd, path))
+                {
+                    context->Chosen = path;
+                    ::EndDialog(hwnd, TRUE);
+                }
+                return TRUE;
+            }
+            case WM_COMMAND:
+                if (!context)
+                {
+                    break;
+                }
+                if (LOWORD(wParam) == IDC_BrowseExe)
+                {
+                    std::wstring path = BrowseForExe(hwnd);
+                    if (IsUsableGameExe(hwnd, path))
+                    {
+                        context->Chosen = path;
+                        ::EndDialog(hwnd, TRUE);
+                    }
+                    return TRUE;
+                }
+                if (LOWORD(wParam) == IDCANCEL)
+                {
+                    ::EndDialog(hwnd, FALSE);
+                    return TRUE;
+                }
+                break;
+            case WM_CLOSE:
+                ::EndDialog(hwnd, FALSE);
+                return TRUE;
+        }
+        return FALSE;
+    }
+
+    // 返回 true 表示用户已经选好 exe。
+    bool ShowSelectExeDialog(HINSTANCE instance, std::wstring& chosen)
+    {
+        SelectExeContext context{};
+        INT_PTR result = ::DialogBoxParamW(instance, MAKEINTRESOURCEW(IDD_SelectExe), nullptr,
+                                           SelectExeDialogProc, (LPARAM)&context);
+        if (result != TRUE)
+        {
+            return false;
+        }
+        chosen = context.Chosen;
+        return true;
+    }
 }
 
 INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -1209,158 +1563,62 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         LPWSTR* argv = ::CommandLineToArgvW(lpCmdLine, &argc);
         if (argc)
         {
-            // loader 通过“把游戏 exe 拖到自身上”启动，因此这里只关心第一个参数。
-            krkrExeFullPath = std::wstring(argv[0]);
-            krkrExeDirectory = Path::GetDirectoryName(krkrExeFullPath);
+            // loader 通过"把游戏 exe 拖到自身上"启动，因此这里只关心第一个参数。
+            // 注意：CommandLineToArgvW 对空命令行会返回自身路径，这种情况必须当成没有参数，
+            // 否则界面上会误显示"已导入"，甚至会尝试往 loader 自己进程里注入。
+            std::wstring candidate = argv[0];
+            if (_wcsicmp(candidate.c_str(), loaderFullPath.c_str()) != 0)
+            {
+                krkrExeFullPath = candidate;
+                krkrExeDirectory = Path::GetDirectoryName(krkrExeFullPath);
+            }
         }
         ::LocalFree(argv);
     }
 
     g_LoaderFullPath = loaderFullPath;
     g_LoaderCurrentDirectory = loaderCurrentDirectory;
+
+    // 双击启动（命令行没带游戏 exe）时，先弹一个专门的拖放窗口拿目标。
+    // 参数解析处已排除"空命令行被 CommandLineToArgvW 返回自身路径"的情况。
+    if (krkrExeFullPath.empty())
+    {
+        std::wstring chosen;
+        if (!ShowSelectExeDialog(hInstance, chosen))
+        {
+            return 0;
+        }
+        krkrExeFullPath = chosen;
+        krkrExeDirectory = Path::GetDirectoryName(krkrExeFullPath);
+    }
+
     g_KrkrExeFullPath = krkrExeFullPath;
     g_KrkrExeDirectory = krkrExeDirectory;
 
-	// SteamStub auto-unpack
-	{
-		auto Log = [&](const wchar_t* s) {
-			OutputDebugStringW(s);
-			std::wstring lp = g_LoaderFullPath.substr(0, g_LoaderFullPath.rfind(L'\\') + 1) + L"CxdecExtractorLoader.log";
-			FILE* f = nullptr; _wfopen_s(&f, lp.c_str(), L"a");
-			if (f) { fwprintf(f, L"%s\n", s); fclose(f); }
-		};
-
-		auto LdDir = [&]() { return g_LoaderFullPath.substr(0, g_LoaderFullPath.rfind(L'\\') + 1); };
-		HMODULE hUnp = LoadLibraryW((LdDir() + L"CxdecExtractordll\\CxdecPeUnpacker.dll").c_str());
-		if (hUnp && !g_KrkrExeFullPath.empty() && g_KrkrExeFullPath != loaderFullPath)
-		{
-			auto D = (bool(*)(const wchar_t*))GetProcAddress(hUnp, "CxdecPeUnpacker_Detect");
-			auto P = (bool(*)(const wchar_t*,const wchar_t*))GetProcAddress(hUnp, "CxdecPeUnpacker_Process");
-			Log(L"[Loader] Checking SteamStub...");
-			if (D && P && D(g_KrkrExeFullPath.c_str()))
-			{
-				Log(L"[Loader] SteamStub detected");
-				if (IDYES == MessageBoxW(NULL,
-					L"检测到 SteamStub 保护壳，需要脱壳处理。\n\n是 - 脱壳并打补丁\n否 - 退出",
-					L"检测到保护壳", MB_YESNO | MB_ICONQUESTION))
-				{
-					Log(L"[Loader] User confirmed");
-					auto GD = [&]() { return g_KrkrExeFullPath.substr(0, g_KrkrExeFullPath.rfind(L'\\') + 1); };
-					auto BP = [&]() { auto b=g_KrkrExeFullPath; auto d=b.rfind(L'.'); return (d!=std::wstring::npos)?b.substr(0,d):b; };
-					std::wstring unp = BP() + L"_unp.exe";
-					std::wstring api = GD() + L"steam_api.dll";
-					std::wstring apiBak = api + L".bak";
-					std::wstring crackedApi = LdDir() + L"CxdecExtractordll\\steamapi_cra\\steam_api.dll";
-
-					// 仅当破解版 dll 存在时才动原版，避免部署缺失把游戏目录改坏。
-					if (GetFileAttributesW(crackedApi.c_str()) != INVALID_FILE_ATTRIBUTES)
-					{
-						if (GetFileAttributesW(apiBak.c_str()) == INVALID_FILE_ATTRIBUTES &&
-						    GetFileAttributesW(api.c_str()) != INVALID_FILE_ATTRIBUTES)
-						{
-							MoveFileW(api.c_str(), apiBak.c_str());
-							Log(L"[Loader] Backed up steam_api.dll -> .bak");
-						}
-
-						if (!CopyFileW(crackedApi.c_str(), api.c_str(), FALSE))
-						{
-							// 拷贝失败则回滚：原版已移走、新 dll 又没到位时恢复。
-							if (GetFileAttributesW(apiBak.c_str()) != INVALID_FILE_ATTRIBUTES &&
-							    GetFileAttributesW(api.c_str()) == INVALID_FILE_ATTRIBUTES)
-							{
-								MoveFileW(apiBak.c_str(), api.c_str());
-							}
-							Log(L"[Loader] FAIL: steam_api.dll replace failed");
-						}
-					}
-					else
-					{
-						Log(L"[Loader] WARNING: cracked steam_api.dll missing, skip swap");
-					}
-
-					Log(L"[Loader] Unpacking...");
-					if (P(g_KrkrExeFullPath.c_str(), unp.c_str()))
-					{
-						Log(L"[Loader] Unpack OK, injecting...");
-						std::wstring dll = LdDir() + L"CxdecExtractordll\\CxdecAntiMalform.dll";
-						std::wstring cmd = L"\"" + unp + L"\"";
-						std::vector<wchar_t> cb(cmd.begin(), cmd.end()); cb.push_back(L'\0');
-
-						STARTUPINFOW si = { sizeof(si) };
-						PROCESS_INFORMATION pi = {};
-						if (CreateProcessW(unp.c_str(), cb.data(), NULL, NULL, FALSE,
-							CREATE_SUSPENDED, NULL, GD().c_str(), &si, &pi))
-						{
-							Log(L"[Loader] Process created suspended");
-							uint8_t dd[0x678] = {}; *(uint32_t*)dd = 0x678;
-							CreateDetourSection(pi.hProcess, dd, sizeof(dd));
-							Log(L"[Loader] Detour section created");
-
-							SIZE_T nb = (dll.length()+1)*sizeof(wchar_t);
-							LPVOID rp = VirtualAllocEx(pi.hProcess, NULL, nb,
-								MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-							if (rp) {
-								WriteProcessMemory(pi.hProcess, rp, dll.c_str(), nb, NULL);
-								Log(L"[Loader] DLL path written");
-								auto* LL = (LPTHREAD_START_ROUTINE)GetProcAddress(
-									GetModuleHandleW(L"kernel32.dll"), "LoadLibraryW");
-								HANDLE ht = CreateRemoteThread(pi.hProcess, NULL, 0, LL, rp, 0, NULL);
-								if (ht) { WaitForSingleObject(ht, INFINITE); CloseHandle(ht); Log(L"[Loader] DLL injected"); }
-								else Log(L"[Loader] FAIL: CreateRemoteThread");
-								VirtualFreeEx(pi.hProcess, rp, 0, MEM_RELEASE);
-							}
-							else Log(L"[Loader] FAIL: VirtualAllocEx");
-							ResumeThread(pi.hThread);
-							Log(L"[Loader] Process resumed");
-							WaitForSingleObject(pi.hProcess, INFINITE);
-							CloseHandle(pi.hProcess);
-							CloseHandle(pi.hThread);
-							DeleteFileW(unp.c_str());
-							Log(L"[Loader] Cleaned temp file");
-						}
-						else Log(L"[Loader] FAIL: CreateProcess");
-						MessageBoxW(NULL,
-							L"脱壳及补丁注入完成。\n\n"
-							L"已生成 game_crack.exe。\n"
-							L"请将 game_crack.exe 重新拖入 Loader。",
-							L"脱壳完成", MB_OK | MB_ICONINFORMATION);
-					}
-					else Log(L"[Loader] FAIL: unpack");
-				}
-				else Log(L"[Loader] User cancelled");
-				FreeLibrary(hUnp);
-				ExitProcess(0);
-			}
-			else Log(L"[Loader] Not packed or detect failed");
-			FreeLibrary(hUnp);
-		}
-		else Log(L"[Loader] Cannot load CxdecPeUnpacker.dll");
-	}
-
-    if (!krkrExeFullPath.empty() && krkrExeFullPath != loaderFullPath)
+    // 带壳的游戏在这里先脱壳；脱壳流程自己会退出，不会再进功能窗口。
+    if (RunSteamStubPrecheck(nullptr, krkrExeFullPath))
     {
-        HWND hwnd = ::CreateDialogParamW((HINSTANCE)hInstance, MAKEINTRESOURCEW(IDD_MainForm), NULL, LoaderDialogWindProc, 0u);
-        ::ShowWindow(hwnd, SW_NORMAL);
-
-        // 纯对话框程序，自己维护标准消息循环即可。
-        MSG msg{};
-        while (BOOL ret = ::GetMessageW(&msg, NULL, 0u, 0u))
-        {
-            if (ret == -1)
-            {
-                return -1;
-            }
-
-            ::TranslateMessage(&msg);
-            ::DispatchMessageW(&msg);
-        }
+        return 0;
     }
-    else
+
+    HWND hwnd = ::CreateDialogParamW((HINSTANCE)hInstance, MAKEINTRESOURCEW(IDD_MainForm), NULL, LoaderDialogWindProc, 0u);
+    if (!hwnd)
     {
-        ::MessageBoxW(nullptr,
-                      L"请拖拽游戏主程序到启动器",
-                      L"错误",
-                      MB_OK | MB_ICONERROR);
+        return -1;
+    }
+    ::ShowWindow(hwnd, SW_NORMAL);
+
+    // 纯对话框程序，自己维护标准消息循环即可。
+    MSG msg{};
+    while (BOOL ret = ::GetMessageW(&msg, NULL, 0u, 0u))
+    {
+        if (ret == -1)
+        {
+            return -1;
+        }
+
+        ::TranslateMessage(&msg);
+        ::DispatchMessageW(&msg);
     }
 
     return 0;

@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "PeParser.h"
 
-// ---- PeReader ----
+// ---- PE 读取 ----
 
 PeReader::PeReader(const std::wstring& filePath)
     : m_filePath(filePath), m_dosHeader(nullptr), m_ntHeaders(nullptr) {}
@@ -103,7 +103,7 @@ IMAGE_DATA_DIRECTORY PeReader::GetDataDirectory(int index) const
     return m_ntHeaders->OptionalHeader.DataDirectory[index];
 }
 
-// ---- PeRebuilder ----
+// ---- PE 重建 ----
 
 PeRebuilder::PeRebuilder(const PeReader& source)
     : m_source(source), m_dosHeader(nullptr), m_ntHeaders(nullptr), m_zeroDosStub(false)

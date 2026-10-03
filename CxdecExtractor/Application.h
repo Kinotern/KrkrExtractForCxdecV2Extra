@@ -26,42 +26,27 @@ namespace Engine
 
 	public:
 
-		// <summary>
 		// 设置模块信息
-		// </summary>
-		// <param name="hModule">模块信息</param>
+		// hModule：模块信息
 		void InitializeModule(HMODULE hModule);
 
-		// <summary>
 		// 初始化插件
-		// </summary>
-		// <param name="exporter">插件导出函数</param>
+		// exporter：插件导出函数
 		void InitializeTVPEngine(iTVPFunctionExporter* exporter);
 
-		// <summary>
 		// 获取插件是否初始化完毕
-		// </summary>
-		// <returns>True已初始化 False未初始化</returns>
+		// 返回 True已初始化 False未初始化
 		bool IsTVPEngineInitialize();
 
-		// <summary>
 		// 获取解包器
-		// </summary>
-		// <returns></returns>
 		ExtractCore* GetExtractor();
 
-		// <summary>
 		// 获取对象实例
-		// </summary>
 		static Application* GetInstance();
-		// <summary>
 		// 初始化
-		// </summary>
-		// <param name="hModule">模块信息</param>
+		// hModule：模块信息
 		static void Initialize(HMODULE hModule);
-		// <summary>
 		// 释放
-		// </summary>
 		static void Release();
 	};
 }

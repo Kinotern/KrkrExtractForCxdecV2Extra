@@ -9,18 +9,14 @@
 namespace Engine
 {
 
-	// <summary>
 	// Hash接口
-	// </summary>
 	class IStringHasher
 	{
 	public:
 		//IStringHasher::Calculate接口  fastcall模拟thiscall
 		using tCalculate = tjs_int(__fastcall*)(IStringHasher* thisObj, void* unuseEdx, tTJSVariant* hashValueRet, const tTJSString* str, const tTJSString* seed);
 
-		// <summary>
 		// 虚表结构
-		// </summary>
 		struct VptrTable
 		{
 			void* Destruct;			//析构
@@ -28,37 +24,24 @@ namespace Engine
 		};
 
 	private:
-		//vtable   offset:0x00
+		// vtable 偏移 0x00
 		tjs_uint8* mSalt;   //盐指针   offset:0x04
 		tjs_int mSaltSize;	//盐大小   offset:0x08
 	public:
 		virtual ~IStringHasher() = 0;
-		// <summary>
 		// Hash计算
-		// </summary>
-		// <param name="hashValueRet">返回值</param>
-		// <param name="str">字符串</param>
-		// <param name="seed">种子</param>
-		// <returns>Hash长度</returns>
+		// hashValueRet：返回值；str：字符串；seed：种子；返回 Hash长度
 		virtual tjs_int Calculate(tTJSVariant* hashValueRet, const tTJSString* str, const tTJSString* seed) = 0;
 
 	public:
-		// <summary>
 		// 获取盐的长度
-		// </summary>
 		tjs_int GetSaltLength() const;
-		// <summary>
 		// 获取盐数据指针
-		// </summary>
 		const tjs_uint8* GetSaltBytes() const;
 
-		// <summary>
 		// 获取虚表指针 (Hook用)
-		// </summary>
 		VptrTable* GetVptrTable();
-		// <summary>
 		// 设置虚表指针 (Hook用)
-		// </summary>
 		void SetVptrTable(const VptrTable* vt);
 
 		IStringHasher() = delete;
@@ -68,13 +51,11 @@ namespace Engine
 		IStringHasher& operator=(IStringHasher&&) = delete;
 	};
 
-	// <summary>
 	// 文件路径Hash接口
-	// </summary>
 	class PathNameHasher : public IStringHasher
 	{
 	private:
-		//IStringHasher Base offset:0x00
+		// IStringHasher 基类偏移 0x00
 		tjs_uint8 mSaltData[0x10]; //盐数据 offset:0x0C
 
 	public:
@@ -85,13 +66,11 @@ namespace Engine
 		PathNameHasher& operator=(PathNameHasher&&) = delete;
 	};
 
-	// <summary>
 	// 文件名Hash接口
-	// </summary>
 	class FileNameHasher : public IStringHasher
 	{
 	private:
-		//IStringHasher Base offset:0x00
+		// IStringHasher 基类偏移 0x00
 		tjs_uint8 mSaltData[0x20]; //盐数据 offset:0x0C
 
 	public:
@@ -104,7 +83,7 @@ namespace Engine
 
 
 	//Cxdec插件储存管理 size = 0x60
-	//CompoundStorageMedia : public iTVPStorageMedia
+	// CompoundStorageMedia 继承 iTVPStorageMedia
 	struct CompoundStorageMedia
 	{
 		void* VptrTable;					//0x00
@@ -137,11 +116,11 @@ namespace Engine
 	public:
 		using tCreateCompoundStorageMedia = tjs_error(__cdecl*)(CompoundStorageMedia** retTVPStorageMedia, tTJSVariant* tjsVarPrefix, int argc, void* argv);
 
-		//Hook TVPStorageMedia创建
+		// 挂钩 TVPStorageMedia创建
 		friend tjs_error __cdecl HookCreateCompoundStorageMedia(CompoundStorageMedia** retTVPStorageMedia, tTJSVariant* tjsVarPrefix, int argc, void* argv);
-		//Hook 文件夹路径计算
+		// 挂钩 文件夹路径计算
 		friend tjs_int __fastcall HookPathNameHasherCalcute(IStringHasher* thisObj, void* unusedEdx, tTJSVariant* hashValueRet, const tTJSString* str, const tTJSString* seed);
-		//Hook 文件名计算
+		// 挂钩 文件名计算
 		friend tjs_int __fastcall HookFileNameHasherCalcute(IStringHasher* thisObj, void* unusedEdx, tTJSVariant* hashValueRet, const tTJSString* str, const tTJSString* seed);
 
 	private:
@@ -172,35 +151,24 @@ namespace Engine
 
 	public:
 
-		// <summary>
 		// 设置Hash表输出路径
-		// </summary>
-		// <param name="directory">文件夹绝对路径</param>
+		// directory：文件夹绝对路径
 		void SetOutputDirectory(const std::wstring& directory);
 		void SetHashOutputDirectory(const std::wstring& directory);
 		void WriteDirectoryHash(const std::wstring& relativeDirPath, const std::wstring& hash);
 		void WriteFileNameHash(const std::wstring& fileName, const std::wstring& hash);
 
-		// <summary>
 		// 初始化 (特征码找接口)
-		// </summary>
-		// <param name="codeVa">代码起始地址</param>
-		// <param name="codeSize">代码大小</param>
+		// codeVa：代码起始地址；codeSize：代码大小
 		void Initialize(PVOID codeVa, DWORD codeSize);
-		// <summary>
 		// 检查是否已经初始化
-		// </summary>
-		// <returns>True已初始化 False未初始化</returns>
+		// 返回 True已初始化 False未初始化
 		bool IsInitialized();
 
 
-		// <summary>
 		// 获取对象实例
-		// </summary>
 		static HashCore* GetInstance();
-		// <summary>
 		// 释放
-		// </summary>
 		static void Release();
 	};
 }

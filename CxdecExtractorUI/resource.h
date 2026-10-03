@@ -1,7 +1,5 @@
 //{{NO_DEPENDENCIES}}
-// Microsoft Visual C++ generated include file.
-// Used by CxdecExtractorUI.rc
-//
+// Microsoft Visual C++ 生成的包含文件
 #define IDD_MainForm                    101
 #define IDC_AddFiles                    1001
 #define IDC_ClearCompleted              1002
@@ -15,7 +13,7 @@
 #define IDC_WorkerInfo                  1010
 #define IDC_DropHint                    1011
 
-// Next default values for new objects
+// 新对象的默认值
 //
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS

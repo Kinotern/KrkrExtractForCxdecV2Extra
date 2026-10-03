@@ -1,19 +1,14 @@
 ﻿#pragma once
 #include <cstdint>
 
-// Knuth-Morris-Pratt byte-level search.
+// Knuth-Morris-Pratt 字节查找
 
 namespace Kmp {
 
-// Build the partial-match (failure) table.
-// pattern: byte sequence to search for
-// patternLen: length in bytes
-// table: output array, caller allocates patternLen elements
+// 建失败表，table 由调用方分配 patternLen 个元素
 void BuildTable(const uint8_t* pattern, size_t patternLen, size_t* table);
 
-// Search for pattern in data using KMP.
-// Returns pointer to first match, or nullptr if not found.
-// mask: optional; if non-null, mask[i]==0 means byte at pattern[i] is wild.
+// KMP 查找，返回首个匹配位置；mask 非空时 mask[i]==0 表示该字节通配
 const uint8_t* Search(
     const uint8_t* data,    size_t dataLen,
     const uint8_t* pattern, size_t patternLen,

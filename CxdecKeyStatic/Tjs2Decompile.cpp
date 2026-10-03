@@ -48,14 +48,7 @@ static std::string utf16le_to_utf8(const uint8_t* data, size_t len) {
 
 static void parse_data_chunk(const uint8_t* data, size_t body_len,
                              std::vector<std::string>& strings) {
-    // TJS2 DATA chunk解析（按TJS2语法规范）：
-    // bytecode_literals（1字节单位）+ align4
-    // shorts（2字节单位）+ align4
-    // ints（4字节单位）+ align4
-    // int64s（8字节单位）+ align4
-    // reals_raw（8字节单位）+ align4
-    // strings（每个：u32长度, len*2字节UTF-16LE, align4）
-    // octets（每个：u32长度, len字节, align4）
+    // TJS2 DATA 区：各类型数组 + 字符串池 + octet，每段末尾对齐到 4
 
     size_t off = 0;
 

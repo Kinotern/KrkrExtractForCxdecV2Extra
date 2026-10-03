@@ -5,14 +5,7 @@
 #include <utility>
 #include <vector>
 
-// hxv4p：Hxv4 解密参数的二进制容器。
-// 格式定义见 cxdec-hxv4-static-analysis/docs/core/hxv4/11-parameter-storage.md
-//
-// 相对 drip_program.json 的变化：
-//   - context_u32 由「整段内存快照(3106 dword)」收敛为 VM 真正寻址的 1024 dword
-//   - lane 的 opcode 改存索引(u8)，不再存地址
-//   - lane 的 param 用 LEB128
-//   - 未知 chunk 跳过，便于后续扩展
+// hxv4p：Hxv4 解密参数的二进制容器
 
 namespace Hxv4p {
 

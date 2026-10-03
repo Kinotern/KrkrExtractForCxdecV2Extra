@@ -16,14 +16,7 @@ void BuildTable(const uint8_t* pattern, size_t patternLen, size_t* table) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// When a mask is provided, KMP's failure-function table cannot be used safely:
-// the table is built from raw byte values without wildcard awareness, so
-// back-tracking at a wildcard position would jump to a wrong prefix offset.
-// We therefore use a simple O(n*m) linear scan for the masked case.
-// Pattern lengths in this codebase are short (< 32 bytes), so the cost is
-// negligible.
-// ---------------------------------------------------------------------------
+// 带掩码时 KMP 失败表不可靠（建表时不知道通配），改用 O(n*m) 线性扫描
 static const uint8_t* SearchWithMask(
     const uint8_t* data,    size_t dataLen,
     const uint8_t* pattern, size_t patternLen,
@@ -34,7 +27,7 @@ static const uint8_t* SearchWithMask(
     for (size_t i = 0; i <= dataLen - patternLen; ++i) {
         bool match = true;
         for (size_t j = 0; j < patternLen; ++j) {
-            // mask[j] == 0  => wildcard, always matches
+            // mask[j] == 0 表示通配，必然匹配
             if (mask[j] != 0 && data[i + j] != pattern[j]) {
                 match = false;
                 break;
@@ -53,11 +46,11 @@ const uint8_t* Search(
     if (patternLen == 0) return data;
     if (dataLen < patternLen) return nullptr;
 
-    // If a mask is supplied, delegate to the simple wildcard scan.
+    // 给了掩码就走朴素通配扫描
     if (mask)
         return SearchWithMask(data, dataLen, pattern, patternLen, mask);
 
-    // No mask: standard KMP.
+    // 没有掩码：走标准 KMP
     std::vector<size_t> table(patternLen);
     BuildTable(pattern, patternLen, table.data());
 

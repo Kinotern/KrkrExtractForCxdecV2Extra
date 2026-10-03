@@ -8,12 +8,12 @@ BOOL APIENTRY DllMain(HMODULE hMod, DWORD reason, LPVOID)
         DisableThreadLibraryCalls(hMod);
         OutputDebugStringW(L"[AntiMalform] Init");
 
-        // Phase 1: .detour patches
+        // 阶段 1：应用 .detour 载荷
         const uint8_t* entry = FindDetourEntry();
         if (entry) {
             ApplyDetourPatches(entry);
         } else {
-            // Retry in thread (Loader creates .detour section after injection)
+            // 放到线程里重试（注入后才会有 .detour 节）
             CreateThread(NULL, 0, [](LPVOID)->DWORD {
                 for (int i = 0; i < 50; ++i) {
                     Sleep(200);
@@ -24,7 +24,7 @@ BOOL APIENTRY DllMain(HMODULE hMod, DWORD reason, LPVOID)
             }, NULL, 0, NULL);
         }
 
-        // Phase 2: Install runtime hook
+        // 阶段 2：装运行时挂钩
         if (InstallRuntimeHook()) {
             OutputDebugStringW(L"[AntiMalform] Hook installed");
         } else {

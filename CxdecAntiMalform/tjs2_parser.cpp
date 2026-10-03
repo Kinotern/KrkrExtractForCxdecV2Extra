@@ -37,10 +37,7 @@ static inline uint32_t LE32(const uint8_t* p) {
          | (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
-// SEH-guarded read helpers: bounds check + __try/__except safety net.
-// Matches original AntiMalform's defensive read pattern (pure-C engine used
-// function-level SEH; our C++ code uses read-level SEH to coexist with
-// std::vector / std::string destructors).
+// 带 SEH 的读取助手：越界检查 + __try 兜底
 static inline bool SafeRead16(const uint8_t* data, size_t off, size_t size, uint16_t* out) {
     if (off + 2 > size) return false;
     __try {
@@ -80,24 +77,17 @@ ByteCode Parse(const uint8_t* data, size_t size) {
     if (LE32(data) != FILE_TAG || LE32(data + 4) != VER_TAG) { T2Log(L"[T2] BAD header"); return bc; }
     if (LE32(data + 8) != static_cast<uint32_t>(size)) { T2Log(L"[T2] BAD size: hdr=0x%X size=%zu", LE32(data+8), size); return bc; }
 
-    // --- DATA section ---
+    // --- DATA 区 ---
     if (LE32(data + 12) != DATA_TAG) { T2Log(L"[T2] BAD DATA tag"); return bc; }
     uint32_t dataSize = LE32(data + 16);
     size_t off = 20;
     size_t dataEnd = off + dataSize;
     if (dataEnd > size) { T2Log(L"[T2] dataEnd=%zu > size=%zu", dataEnd, size); return bc; }
 
-    // ReadDataArea format:
-    //   byte array: count (4) + data (aligned to 4)
-    //   short array: count (4) + data (2-byte LE, aligned to 4)
-    //   long array: count (4) + data (4-byte LE)
-    //   longlong array: count (4) + data (8-byte LE)
-    //   double array: count (4) + data (8-byte LE)
-    //   string array: count (4) + [len(4) + UTF-16LE(len*2) + pad if odd]...
-    //   octet array: ...
+    // DATA 区各数组依次排布，每段带 4 字节长度，byte/short 对齐到 4
 
-    // safe_advance: validate count >= 0 and that off + count*elemSize stays within bound,
-    // then advance off by the aligned byte count. Returns false on overflow/oob.
+    // 前进前校验：count >= 0，且 off + count*elemSize 不越界，
+    // 然后按对齐后的字节数前进；越界返回 false
     auto safe_advance = [&](int32_t count, size_t elemSize, size_t align, size_t bound) -> bool {
         if (count < 0) { T2Log(L"[T2] Negative count %d", count); return false; }
         size_t bytes = static_cast<size_t>(count) * elemSize;
@@ -114,32 +104,32 @@ ByteCode Parse(const uint8_t* data, size_t size) {
         return true;
     };
 
-    // byte array
+    // byte 数组
     if (off + 4 > dataEnd) { T2Log(L"[T2] DATA truncated at byte array"); return bc; }
     int32_t count = static_cast<int32_t>(LE32(data + off)); off += 4;
     if (!safe_advance(count, 1, 4, dataEnd)) return bc;
 
-    // short array
+    // short 数组
     if (off + 4 > dataEnd) { T2Log(L"[T2] DATA truncated at short array"); return bc; }
     count = static_cast<int32_t>(LE32(data + off)); off += 4;
     if (!safe_advance(count, 2, 4, dataEnd)) return bc;
 
-    // long array
+    // long 数组
     if (off + 4 > dataEnd) { T2Log(L"[T2] DATA truncated at long array"); return bc; }
     count = static_cast<int32_t>(LE32(data + off)); off += 4;
     if (!safe_advance(count, 4, 1, dataEnd)) return bc;
 
-    // longlong array
+    // longlong 数组
     if (off + 4 > dataEnd) { T2Log(L"[T2] DATA truncated at longlong array"); return bc; }
     count = static_cast<int32_t>(LE32(data + off)); off += 4;
     if (!safe_advance(count, 8, 1, dataEnd)) return bc;
 
-    // double array
+    // double 数组
     if (off + 4 > dataEnd) { T2Log(L"[T2] DATA truncated at double array"); return bc; }
     count = static_cast<int32_t>(LE32(data + off)); off += 4;
     if (!safe_advance(count, 8, 1, dataEnd)) return bc;
 
-    // --- String array ---
+    // --- 字符串池 ---
     count = static_cast<int32_t>(LE32(data + off)); off += 4;
     std::vector<std::string> strings;
     strings.reserve(count > 0 ? count : 0);
@@ -151,7 +141,7 @@ ByteCode Parse(const uint8_t* data, size_t size) {
         for (int32_t j = 0; j < slen; ++j) {
             if (off + 2 > dataEnd) break;
             uint16_t ch = LE16(data + off); off += 2;
-            // Store as UTF-8 (ASCII-subset chars only for our needs)
+            // 按 UTF-8 存，只保留 ASCII 字符（够用）
             if (ch < 0x80) s.push_back(static_cast<char>(ch));
             else s.push_back('?');
         }
@@ -160,10 +150,10 @@ ByteCode Parse(const uint8_t* data, size_t size) {
     }
     bc.strings = strings; // save global string pool
 
-    // Save strings for later
-    // (Remaining DATA items: octet array — skip if present)
+    // 存下字符串池备用
+    // 后面还有 octet 数组，用不到就跳过
 
-    // Try multiple OBJS offsets: some TJS2 variants include DATA tag in dataSize
+    // OBJS 起始位置有几种变体，挨个试
     size_t objsOff = 20 + dataSize;
     if (objsOff + 4 > size || LE32(data + objsOff) != OBJ_TAG) {
         objsOff = 12 + dataSize;  // dataSize includes DATA tag+size
@@ -188,8 +178,8 @@ ByteCode Parse(const uint8_t* data, size_t size) {
         objsEnd = size;
     }
 
-    // Some TJS2 variants have an object count field after objs_size
-    // Check if next bytes are not "TJS2" (i.e., count field present)
+    // 有的变体在 objs_size 后还有对象计数字段
+    // 后面不是 "TJS2" 就说明有计数字段
     if (off + 4 <= objsEnd && LE32(data + off) != FILE_TAG) {
         uint32_t objCount = LE32(data + off);
         T2Log(L"[T2] Object count field: %u", objCount);
@@ -219,13 +209,13 @@ ByteCode Parse(const uint8_t* data, size_t size) {
         off += 4; // propGetter
         off += 4; // superClassGetter
 
-        // Source positions
+        // 源码位置表
         if (off + 4 > objsEnd) break;
         int32_t srcCount = static_cast<int32_t>(LE32(data + off));
         off += 4;
         if (!safe_advance(srcCount, 8, 1, objsEnd)) break;
 
-        // Code array
+        // 代码数组
         if (off + 4 > objsEnd) break;
         int32_t codeCount = static_cast<int32_t>(LE32(data + off));
         off += 4;
@@ -247,12 +237,12 @@ ByteCode Parse(const uint8_t* data, size_t size) {
             ctx.code.push_back(static_cast<int32_t>(op));
             off += 2;
         }
-        // alignment pad if odd codeCount
+        // codeCount 为奇数时补对齐
         if (codeCount & 1) {
             if (off + 2 <= objsEnd) off += 2;
         }
 
-        // Variant array
+        // 变体表
         if (off + 4 > objsEnd) break;
         int32_t varCount = static_cast<int32_t>(LE32(data + off));
         off += 4;
@@ -279,13 +269,13 @@ ByteCode Parse(const uint8_t* data, size_t size) {
             }
         }
 
-        // scgetterps
+        // 父类 getter 表
         if (off + 4 > objsEnd) break;
         int32_t scCount = static_cast<int32_t>(LE32(data + off));
         off += 4;
         if (!safe_advance(scCount, 4, 1, objsEnd)) break;
 
-        // properties
+        // 属性表
         if (off + 4 > objsEnd) break;
         int32_t propCount = static_cast<int32_t>(LE32(data + off));
         off += 4;

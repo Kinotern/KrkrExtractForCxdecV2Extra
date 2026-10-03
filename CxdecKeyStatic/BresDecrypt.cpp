@@ -10,7 +10,7 @@ BresKeyMaterial bres_derive_key(const uint8_t* path_utf16le, size_t path_len,
                                 const uint8_t* salt, size_t salt_len) {
     BresKeyMaterial mat{};
 
-    // SHA3-384(path_utf16le + salt)
+    // SHA3-384(路径UTF16LE + salt)
     uint8_t digest[SHA3_384::DIGEST_SIZE];
     SHA3_384 hasher;
     hasher.update(path_utf16le, path_len);

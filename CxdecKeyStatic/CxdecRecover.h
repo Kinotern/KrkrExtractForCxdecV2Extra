@@ -12,9 +12,7 @@ struct GameParams {
     uint32_t salt_offset = 0;   // 0 = auto-detect via V2Link marker
     uint32_t salt_size   = 0x2000;
 
-    // Filter path覆盖。空=从EXE资源自动检测。
-    // startup：从TEXT/127 bres URL提取
-    // bootstrap：从解密后的STARTUP.TJS bres URL提取
+    // filter path 覆盖；留空则从 EXE 资源自动检测（startup / bootstrap 两个来源）
     std::wstring startup_filter_path;    // empty = auto
     std::wstring bootstrap_filter_path;  // empty = auto
 

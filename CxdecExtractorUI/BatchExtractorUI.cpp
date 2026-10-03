@@ -867,8 +867,8 @@ namespace
 
     unsigned int ResolveWorkerCount()
     {
-        // The underlying TVP/Cxdec runtime is not stable under concurrent archive extraction.
-        // Keep a single extraction worker and let the watchdog/UI threads handle responsiveness.
+        // TVP/Cxdec 运行时在并发解包下不稳定，
+        // 所以只保留一个解包线程，响应性交给看门狗和 UI 线程
         return 1u;
     }
 

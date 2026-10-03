@@ -1,7 +1,5 @@
 ﻿//{{NO_DEPENDENCIES}}
-// Microsoft Visual C++ 生成的包含文件。
-// 供 CxdecExtractorLoader.rc 使用
-//
+// Microsoft Visual C++ 生成的包含文件
 #define IDI_MainIcon                    101
 #define IDD_MainForm                    102
 #define IDD_SelectExe                   103
@@ -15,7 +13,7 @@
 #define IDC_BrowseExe                   1009
 #define IDC_DropZone                    1010
 
-// Next default values for new objects
+// 新对象的默认值
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS

@@ -7,12 +7,7 @@
 
 namespace Crypto {
 
-// bres:// 资源解密（Kirikiri引擎）。
-//
-// 加密链：
-//   1. SHA3-384(path_utf16le + 32_byte_salt) 鈫?48-byte digest
-// 2. key=digest[0:32], nonce=digest[32:40], counter=digest[40:48]
-//   3. ChaCha8(key, nonce, counter) 鈯?ciphertext 鈫?plaintext
+// bres:// 解密：key/nonce/counter 由 SHA3-384(path + salt) 派生，ChaCha8 异或
 
 struct BresKeyMaterial {
     uint8_t key[32];

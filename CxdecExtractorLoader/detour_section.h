@@ -2,8 +2,8 @@
 #include <windows.h>
 #include <cstdint>
 
-// Allocate a fake PE image with a .detour section in the remote process.
-// Returns a pointer to the allocated remote memory, or NULL on failure.
+// 在目标进程里造一块带 .detour 节的假 PE
+// 返回分配到的远端地址，失败返回 NULL
 void* CreateDetourSection(
     HANDLE hProcess,
     const void* injectData,

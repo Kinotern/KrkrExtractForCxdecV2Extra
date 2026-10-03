@@ -161,9 +161,7 @@ DripProgram derive_drip_program(
         return prog;
     }
 
-    // holder_words 从 core 起读。原先按 core+4 读会整体错位一个 dword，
-    // 导致 nonce0 派生值落到 [1][2] 而非 [2][3]，filter state 全错
-    // （实测：错位时 CafeStella main.xp3 全部 55 条 adler32 校验失败，纠正后 55/55 通过）。
+    // holder_words 从 core 起读；按 core+4 读会错位一个 dword，filter state 全错
     for (int i = 0; i < 6; ++i)
         prog.holder_words[i] = *(uint32_t*)(core + i * 4);
     std::memcpy(prog.hxv4_key.data(), core + 0x3038, 32);

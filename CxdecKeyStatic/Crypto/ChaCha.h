@@ -5,9 +5,7 @@
 
 namespace Crypto {
 
-// ChaCha8流密码（8轮 = 4个双轮）。
-// 32字节密钥，8字节nonce，8字节计数器（64位）。
-// 计数器推进使用XOR（匹配Kirikiri引擎实现）。
+// ChaCha8 流密码：32 字节密钥、8 字节 nonce、64 位计数器（推进用 XOR）
 
 // 生成一个64字节的密钥流块。
 // key: 8个uint32组成的密钥

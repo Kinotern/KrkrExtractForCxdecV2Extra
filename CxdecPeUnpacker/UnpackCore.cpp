@@ -161,7 +161,7 @@ bool UnpackEngine::Step5_DecryptCodeSection() {
 bool UnpackEngine::Step6_FixTlsCallbacks() {
     Log(L"  Step 6 - TLS 回调处理...");
 
-    // NOP first 16 bytes of code section (stolen data area)
+    // 代码节开头 16 字节填 NOP（被搬走的数据区）
     if (m_decryptedCode.size() >= 16) {
         const uint8_t nop16[] = {
             0xC3, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,

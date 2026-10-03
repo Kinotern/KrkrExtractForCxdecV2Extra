@@ -878,7 +878,7 @@ namespace Engine
         tjs_error result = g_CreateStorageMediaFunc(retTVPStorageMedia, tjsVarPrefix, argc, argv);
         if (TJS_SUCCEEDED(result))
         {
-            //Unhook
+            // 摘钩
             HookUtils::InlineHook::UnHook(g_CreateStorageMediaFunc, HookCreateCompoundStorageMedia);
 
             //获取媒体对象
@@ -1064,7 +1064,7 @@ namespace Engine
         {
             g_CreateStorageMediaFunc = (tCreateCompoundStorageMedia)createMedia;
 
-            //Hook创建媒体接口
+            // 挂钩创建媒体接口
             HookUtils::InlineHook::Hook(g_CreateStorageMediaFunc, HookCreateCompoundStorageMedia);
         }
     }

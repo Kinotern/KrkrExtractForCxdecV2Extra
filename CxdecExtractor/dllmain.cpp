@@ -26,9 +26,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     return TRUE;
 }
 
-// <summary>
 // 兼容旧界面的单包解包接口
-// </summary>
 extern "C" __declspec(dllexport) void WINAPI ExtractPackage(const wchar_t* packageName)
 {
     if (!packageName)

@@ -2,17 +2,11 @@
 #include <windows.h>
 #include <cstdint>
 
-// Install a runtime hook on the engine's TJS bytecode loading function.
-// The target is located via wildcard pattern search.
-//
-// When the engine loads a TJS script, the hook callback checks if it's
-// "startup.tjs".  If so, it reads the decrypted TJS bytecode from the
-// engine's stream object, patches it (System.checkSignature bypass), and
-// writes a _crack.exe with all patches applied.
+// 挂钩引擎的 TJS 字节码加载函数，拦到 startup.tjs 时改字节码并产出 _crack.exe
 
-// Search the engine module for the hook target using the wildcard pattern
-// and install a Detours hook. Returns true if hook was installed.
+// 按通配特征码在引擎模块里找挂钩目标并装钩
+// 装上返回 true
 bool InstallRuntimeHook();
 
-// Remove the hook. Called during plugin cleanup.
+// 摘掉挂钩
 void RemoveRuntimeHook();

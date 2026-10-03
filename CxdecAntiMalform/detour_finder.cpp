@@ -3,14 +3,14 @@
 #include <cstdio>
 #include <vector>
 
-// 16-byte detour key
+// 16 字节 detour key
 static const uint8_t kDetourKey[16] = {
     0xFF, 0xA3, 0xD7, 0x2E, 0x39, 0x33, 0x8D, 0x4A,
     0x80, 0x5C, 0xD4, 0x98, 0x15, 0x3F, 0xC2, 0x8F
 };
 
-// Find a PE section by name in a loaded module.
-// Returns a pointer to the section data in memory, or nullptr.
+// 在已加载模块里按名字找节
+// 返回内存中该节数据的指针，找不到返回 nullptr
 static const uint8_t* FindSectionByName(
     const uint8_t* moduleBase,
     const char* name)
@@ -26,7 +26,7 @@ static const uint8_t* FindSectionByName(
 
     auto* sec = IMAGE_FIRST_SECTION(nt);
     for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++sec) {
-        // PE section names are 8 bytes, null-padded
+        // 节名固定 8 字节，不足补 0
         if (std::memcmp(sec->Name, name, std::strlen(name)) == 0 &&
             (std::strlen(name) >= 8 || sec->Name[std::strlen(name)] == 0)) {
             return moduleBase + sec->VirtualAddress;
@@ -35,7 +35,7 @@ static const uint8_t* FindSectionByName(
     return nullptr;
 }
 
-// Scan loaded modules for a detour entry matching our key.
+// 遍历内存，找能匹配 key 的载荷条目
 const uint8_t* FindDetourEntry()
 {
     std::vector<const uint8_t*> coveredBases;
@@ -49,14 +49,14 @@ const uint8_t* FindDetourEntry()
 
             auto* base = static_cast<const uint8_t*>(mbi.AllocationBase);
 
-            // Skip regions already covered by a previous module
+            // 跳过已被前面模块覆盖的区域
             bool skip = false;
             for (auto* cb : coveredBases) {
                 if (base == cb) { skip = true; break; }
             }
             if (skip) { addr = static_cast<uint8_t*>(mbi.BaseAddress) + mbi.RegionSize; continue; }
 
-            // Check if this is a valid PE — "MZ" at base
+            // 判断这块是不是 PE（头部为 "MZ"）
             if (base[0] != 0x4D || base[1] != 0x5A) {
                 addr = static_cast<uint8_t*>(mbi.BaseAddress) + mbi.RegionSize;
                 continue;
@@ -64,7 +64,7 @@ const uint8_t* FindDetourEntry()
 
             coveredBases.push_back(base);
 
-            // Find .detour section in this module
+            // 在这个模块里找 .detour 节
             const uint8_t* secData = FindSectionByName(base, ".detour");
             if (!secData) {
                 secData = FindSectionByName(base, ".detourc");
@@ -74,14 +74,14 @@ const uint8_t* FindDetourEntry()
                 }
             }
 
-            // Validate section header: [0]=size>=0x40, [1]==0x727444
+            // 校验节数据头：[0]=size>=0x40，[1]==0x727444
             auto* hdr = reinterpret_cast<const uint32_t*>(secData);
             if (hdr[0] < 0x40 || hdr[1] != 0x727444) {
                 addr = static_cast<uint8_t*>(mbi.BaseAddress) + mbi.RegionSize;
                 continue;
             }
 
-            // Iterate entries from hdr[2] to hdr[3]
+            // 从 hdr[2] 到 hdr[3] 遍历条目
             const uint8_t* dataStart = secData + 0x40;
             const uint8_t* dataEnd   = secData + hdr[3];
             const uint8_t* cur = dataStart;
@@ -94,14 +94,14 @@ const uint8_t* FindDetourEntry()
                 if (dataSize < 0x18) break;
 
                 if (std::memcmp(keyPtr, kDetourKey, 16) == 0) {
-                    // Match! Return data after 24-byte header
+                    // 命中，返回跳过 24 字节头之后的数据
                     return cur + 0x18;
                 }
 
                 cur += dataSize;
             }
 
-            // Move past this allocation
+            // 移到下一块分配
             addr = static_cast<uint8_t*>(mbi.BaseAddress) + mbi.RegionSize;
             continue;
         }
@@ -111,7 +111,7 @@ const uint8_t* FindDetourEntry()
     return nullptr;
 }
 
-// Apply detour patches from a matching entry.
+// 应用命中条目里的三处补丁
 bool ApplyDetourPatches(const uint8_t* entry)
 {
     auto* hdr = reinterpret_cast<const uint32_t*>(entry);
@@ -124,25 +124,25 @@ bool ApplyDetourPatches(const uint8_t* entry)
     uint32_t dest2  = hdr[20];
     uint32_t dest3  = hdr[24];
 
-    // No patches to apply — empty entry
+    // 空条目，没有要打的东西
     if (magic == 0 && size1 == 0 && size2 == 0 && size3 == 0)
         return false;
 
-    // Patch region 1
+    // 区域 1
     if (size1 > 0 && dest1 != 0) {
         const uint8_t* patchData = reinterpret_cast<const uint8_t*>(hdr + 28 / 4);
         WriteProcessMemory(GetCurrentProcess(), (void*)(uintptr_t)dest1,
                            patchData, size1, nullptr);
     }
 
-    // Patch region 2
+    // 区域 2
     if (size2 > 0 && dest2 != 0) {
         const uint8_t* patchData = reinterpret_cast<const uint8_t*>(hdr + 92 / 4);
         WriteProcessMemory(GetCurrentProcess(), (void*)(uintptr_t)dest2,
                            patchData, size2, nullptr);
     }
 
-    // Patch region 3
+    // 区域 3
     if (size3 > 0 && dest3 != 0) {
         const uint8_t* patchData = reinterpret_cast<const uint8_t*>(hdr + 1636 / 4);
         WriteProcessMemory(GetCurrentProcess(), (void*)(uintptr_t)dest3,
@@ -152,12 +152,12 @@ bool ApplyDetourPatches(const uint8_t* entry)
     return true;
 }
 
-// Log injectData fields for debugging.
+// 调试用：打印载荷字段
 void DumpDetourEntry(const uint8_t* entry)
 {
     auto* hdr = reinterpret_cast<const uint32_t*>(entry);
 
-    // [0]=magic [1]=size1 [2]=size2 [3]=size3
+    // 载荷字段：[0]=magic [1]=size1 [2]=size2 [3]=size3
     // [4]=dest1 [5]=dest2 [6]=dest3
     OutputDebugStringA("=== Detour Entry ===\n");
     char buf[256];
@@ -168,11 +168,11 @@ void DumpDetourEntry(const uint8_t* entry)
               hdr[16], hdr[20], hdr[24]);
     OutputDebugStringA(buf);
 
-    // Write to a log file for easy access
+    // 落盘一份，方便查看
     FILE* f = nullptr;
     fopen_s(&f, "detour_dump.bin", "wb");
     if (f) {
-        // Dump raw entry bytes (first 256)
+        // 转储条目原始字节（前 256 字节）
         fwrite(entry, 1, 256, f);
         fclose(f);
     }

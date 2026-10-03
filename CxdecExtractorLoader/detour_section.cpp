@@ -1,7 +1,7 @@
 ﻿#include "detour_section.h"
 #include <cstring>
 
-// 16-byte detour key
+// 16 字节 detour key
 static const uint8_t kDetourKey[16] = {
     0xFF, 0xA3, 0xD7, 0x2E, 0x39, 0x33, 0x8D, 0x4A,
     0x80, 0x5C, 0xD4, 0x98, 0x15, 0x3F, 0xC2, 0x8F
@@ -12,7 +12,7 @@ void* CreateDetourSection(
     const void* injectData,
     SIZE_T injectDataSize)
 {
-    // Allocate remote memory: payload + 440 bytes of PE headers
+    // 在目标进程分配：载荷 + 440 字节 PE 头
     const SIZE_T totalSize = injectDataSize + 440;
     void* remoteAddr = VirtualAllocEx(
         hProcess, nullptr, totalSize,
@@ -22,7 +22,7 @@ void* CreateDetourSection(
 
     SIZE_T written = 0;
 
-    // --- 1. Write IMAGE_DOS_HEADER (64 bytes) at offset 0 ---
+    // 1. 偏移 0 写 DOS 头（64 字节）
     {
         uint8_t dosHdr[64] = {};
         dosHdr[0] = 0x4D;  // 'M'
@@ -38,16 +38,16 @@ void* CreateDetourSection(
         }
     }
 
-    // --- 2. Write IMAGE_NT_HEADERS32 (248 bytes) at offset 0x40 ---
+    // 2. 偏移 0x40 写 NT 头（248 字节）
     {
         uint8_t ntHdr[0xF8] = {};
         // Signature = "PE\0\0"
         ntHdr[0] = 0x50; ntHdr[1] = 0x45; ntHdr[2] = 0x00; ntHdr[3] = 0x00;
-        // FileHeader
+        // 文件头
         ntHdr[4] = 0x4C; ntHdr[5] = 0x01; // Machine = I386 (0x014C)
         ntHdr[6] = 0x01; ntHdr[7] = 0x00; // NumberOfSections = 1
         ntHdr[20] = 0xE0; ntHdr[21] = 0x00; // SizeOfOptionalHeader = 0xE0
-        // OptionalHeader
+        // 可选头
         ntHdr[24] = 0x0B; ntHdr[25] = 0x01; // Magic = PE32 (0x010B)
 
         if (!WriteProcessMemory(hProcess, static_cast<char*>(remoteAddr) + 0x40,
@@ -57,7 +57,7 @@ void* CreateDetourSection(
         }
     }
 
-    // --- 3. Write IMAGE_SECTION_HEADER at offset 0x40+0xF8=0x138 ---
+    // 3. 偏移 0x138 写节头
     {
         uint8_t secHdr[40] = {};
         std::memcpy(secHdr, ".detour", 7);
@@ -80,7 +80,7 @@ void* CreateDetourSection(
         }
     }
 
-    // --- 4. Write section data header (64 bytes) at offset 0x160 ---
+    // 4. 偏移 0x160 写节数据头（64 字节）
     {
         uint32_t extra[16] = {};
         extra[0] = 0x40;                           // size = 64
@@ -95,7 +95,7 @@ void* CreateDetourSection(
         }
     }
 
-    // --- 5. Write data directory (24 bytes) at offset 0x1A0 ---
+    // 5. 偏移 0x1A0 写 24 字节目录
     {
         uint8_t dir[24] = {};
         uint32_t dataSize = static_cast<uint32_t>(injectDataSize + 24);
@@ -103,8 +103,8 @@ void* CreateDetourSection(
         dir[1]  = (dataSize >> 8) & 0xFF;
         dir[2]  = (dataSize >> 16) & 0xFF;
         dir[3]  = (dataSize >> 24) & 0xFF;
-        // dir[4..7] = 0 (reserved)
-        // dir[8..23] = 16-byte key
+        // dir[4..7] 保留为 0
+        // dir[8..23] 放 16 字节 key
         std::memcpy(dir + 8, kDetourKey, 16);
 
         if (!WriteProcessMemory(hProcess, static_cast<char*>(remoteAddr) + 0x1A0,
@@ -114,7 +114,7 @@ void* CreateDetourSection(
         }
     }
 
-    // --- 6. Write payload data at offset 0x1B8 ---
+    // 6. 偏移 0x1B8 写载荷
     {
         if (!WriteProcessMemory(hProcess, static_cast<char*>(remoteAddr) + 0x1B8,
                                 injectData, injectDataSize, &written) ||

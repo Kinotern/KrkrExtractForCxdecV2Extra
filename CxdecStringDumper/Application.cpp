@@ -6,12 +6,10 @@
 
 namespace Engine
 {
-    // <summary>
     // 单实例
-    // </summary>
     static Application* g_Instance = nullptr;
 
-    //Hook插件功能
+    // 挂钩插件功能
     tTVPV2LinkProc g_V2Link = nullptr;
     HRESULT __stdcall HookV2Link(iTVPFunctionExporter* exporter)
     {
@@ -25,7 +23,7 @@ namespace Engine
         return result;
     }
 
-    //Hook插件加载
+    // 挂钩插件加载
     auto g_GetProcAddressFunction = ::GetProcAddress;
     FARPROC WINAPI HookGetProcAddress(HMODULE hModule, LPCSTR lpProcName)
     {
@@ -133,7 +131,7 @@ namespace Engine
         g_Instance = new Application();
         g_Instance->InitializeModule(hModule);
 
-        //Hook
+        // 挂钩
         HookUtils::InlineHook::Hook(g_GetProcAddressFunction, HookGetProcAddress);
     }
 

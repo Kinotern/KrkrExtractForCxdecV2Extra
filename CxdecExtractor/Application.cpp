@@ -5,9 +5,7 @@
 
 namespace Engine
 {
-    // <summary>
     // DLL 生命周期内的唯一应用对象，统一持有解包器和 TVP 初始化状态。
-    // </summary>
     static Application* g_Instance = nullptr;
 
     // V2Link 是 Krkr/TVP 插件的初始化入口。这里先执行原函数，再补做我们的初始化，

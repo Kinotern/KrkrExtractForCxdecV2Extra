@@ -1036,24 +1036,27 @@ namespace
         auto P = (bool(*)(const wchar_t*, const wchar_t*))::GetProcAddress(hUnp, "CxdecPeUnpacker_Process");
 
         LoaderLog(L"[Loader] Checking SteamStub...");
-        if (!D || !P || !D(exePath.c_str()))
-        {
-            LoaderLog(L"[Loader] Not packed or detect failed");
-            ::FreeLibrary(hUnp);
-            return false;
-        }
+        const bool packed = (D && P && D(exePath.c_str()));
 
-        LoaderLog(L"[Loader] SteamStub detected");
-        if (IDYES != ::MessageBoxW(owner,
-                                   L"检测到 SteamStub 保护壳，需要脱壳处理。\n\n是 - 脱壳并打补丁\n否 - 退出",
-                                   L"检测到保护壳", MB_YESNO | MB_ICONQUESTION))
+        if (!packed)
         {
-            LoaderLog(L"[Loader] User cancelled");
-            ::FreeLibrary(hUnp);
-            return true;
+            // 已经脱过壳（或本来就没壳）的 exe 也要继续走后面的「注入 + 打补丁」：
+            // 反篡改校验跟壳没有关系，不补一样会在启动的最后一步撞上。
+            LoaderLog(L"[Loader] Not packed - will still inject and patch");
         }
-
-        LoaderLog(L"[Loader] User confirmed");
+        else
+        {
+            LoaderLog(L"[Loader] SteamStub detected");
+            if (IDYES != ::MessageBoxW(owner,
+                                       L"检测到 SteamStub 保护壳，需要脱壳处理。\n\n是 - 脱壳并打补丁\n否 - 退出",
+                                       L"检测到保护壳", MB_YESNO | MB_ICONQUESTION))
+            {
+                LoaderLog(L"[Loader] User cancelled");
+                ::FreeLibrary(hUnp);
+                return true;
+            }
+            LoaderLog(L"[Loader] User confirmed");
+        }
         std::wstring gameDir = Path::GetDirectoryName(exePath) + L"\\";
         std::wstring stem = exePath;
         size_t dot = stem.rfind(L'.');
@@ -1066,7 +1069,7 @@ namespace
         std::wstring apiBak = api + L".bak";
         std::wstring crackedApi = loaderDir + L"CxdecExtractordll\\steamapi_cra\\steam_api.dll";
 
-        // 仅当破解版 dll 存在时才动原版，避免部署缺失把游戏目录改坏。
+        // 破解版 dll 缺失时不碰游戏目录里的 steam_api.dll
         if (::GetFileAttributesW(crackedApi.c_str()) != INVALID_FILE_ATTRIBUTES)
         {
             if (::GetFileAttributesW(apiBak.c_str()) == INVALID_FILE_ATTRIBUTES &&
@@ -1078,7 +1081,7 @@ namespace
 
             if (!::CopyFileW(crackedApi.c_str(), api.c_str(), FALSE))
             {
-                // 拷贝失败则回滚：原版已移走、新 dll 又没到位时恢复。
+                // 拷贝失败且新 dll 没到位时，把备份移回来
                 if (::GetFileAttributesW(apiBak.c_str()) != INVALID_FILE_ATTRIBUTES &&
                     ::GetFileAttributesW(api.c_str()) == INVALID_FILE_ATTRIBUTES)
                 {
@@ -1092,15 +1095,30 @@ namespace
             LoaderLog(L"[Loader] WARNING: cracked steam_api.dll missing, skip swap");
         }
 
-        LoaderLog(L"[Loader] Unpacking...");
-        if (!P(exePath.c_str(), unpacked.c_str()))
+        if (packed)
         {
-            LoaderLog(L"[Loader] FAIL: unpack");
-            ::FreeLibrary(hUnp);
-            return true;
+            LoaderLog(L"[Loader] Unpacking...");
+            if (!P(exePath.c_str(), unpacked.c_str()))
+            {
+                LoaderLog(L"[Loader] FAIL: unpack");
+                ::FreeLibrary(hUnp);
+                return true;
+            }
+        }
+        else
+        {
+            // 没壳：复制工作副本走同一条注入流程，原 exe 全程不动
+            LoaderLog(L"[Loader] Copying working copy...");
+            ::DeleteFileW(unpacked.c_str());
+            if (!::CopyFileW(exePath.c_str(), unpacked.c_str(), FALSE))
+            {
+                LoaderLog(L"[Loader] FAIL: copy working copy");
+                ::FreeLibrary(hUnp);
+                return false;
+            }
         }
 
-        LoaderLog(L"[Loader] Unpack OK, injecting...");
+        LoaderLog(L"[Loader] Injecting...");
         std::wstring dll = loaderDir + L"CxdecExtractordll\\CxdecAntiMalform.dll";
         std::wstring cmd = L"\"" + unpacked + L"\"";
         std::vector<wchar_t> cmdline(cmd.begin(), cmd.end());
@@ -1145,15 +1163,29 @@ namespace
             ::ResumeThread(pi.hThread);
             LoaderLog(L"[Loader] Process resumed");
             ::WaitForSingleObject(pi.hProcess, INFINITE);
+
+            DWORD exitCode = 0;
+            ::GetExitCodeProcess(pi.hProcess, &exitCode);
             ::CloseHandle(pi.hProcess);
             ::CloseHandle(pi.hThread);
             ::DeleteFileW(unpacked.c_str());
-            LoaderLog(L"[Loader] Cleaned temp file");
+            LoaderLog(L"[Loader] Cleaned working copy");
+
+            if (exitCode == 2 || exitCode == 3)
+            {
+                // 2 = 这个 exe 已经不需要处理；3 = 需要补但没补上（警告已经弹过了）。
+                // 两种都直接进主界面，不再提示"拖回来"，避免套娃。
+                LoaderLog(exitCode == 2
+                              ? L"[Loader] Nothing to patch, going to main window"
+                              : L"[Loader] Patch could not be applied, going to main window");
+                ::FreeLibrary(hUnp);
+                return false;
+            }
 
             ::MessageBoxW(owner,
-                          FormatString(L"脱壳及补丁注入完成。\n\n已生成：\n%s_crack.exe\n\n"
+                          FormatString(L"补丁注入完成。\n\n已生成：\n%s_crack.exe\n\n"
                                        L"请把它拖到本程序上继续。", stem.c_str()).c_str(),
-                          L"脱壳完成", MB_OK | MB_ICONINFORMATION);
+                          L"处理完成", MB_OK | MB_ICONINFORMATION);
         }
         else
         {
@@ -1563,9 +1595,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         LPWSTR* argv = ::CommandLineToArgvW(lpCmdLine, &argc);
         if (argc)
         {
-            // loader 通过"把游戏 exe 拖到自身上"启动，因此这里只关心第一个参数。
-            // 注意：CommandLineToArgvW 对空命令行会返回自身路径，这种情况必须当成没有参数，
-            // 否则界面上会误显示"已导入"，甚至会尝试往 loader 自己进程里注入。
+            // 只关心第一个参数；空命令行时 CommandLineToArgvW 会返回自身路径，
+            // 那种情况必须当成没有参数，否则会往 loader 自己进程里注入
             std::wstring candidate = argv[0];
             if (_wcsicmp(candidate.c_str(), loaderFullPath.c_str()) != 0)
             {

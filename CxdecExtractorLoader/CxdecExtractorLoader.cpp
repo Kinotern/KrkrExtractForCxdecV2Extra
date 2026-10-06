@@ -111,6 +111,16 @@ namespace
         return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
     }
 
+    bool DirectoryExistsLocal(const std::wstring& path)
+    {
+        if (path.empty())
+        {
+            return false;
+        }
+        DWORD attributes = ::GetFileAttributesW(path.c_str());
+        return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    }
+
     std::wstring GetModuleDllPath(const std::wstring& dllFileName)
     {
         std::wstring modulePath = Path::Combine(Path::Combine(g_LoaderCurrentDirectory, L"CxdecExtractordll"), dllFileName);
@@ -406,27 +416,52 @@ namespace
         return result;
     }
 
-    std::wstring BrowseTextFile(HWND owner, const wchar_t* title)
+    // 统一的文件选择框：save=true 走"另存为"，否则走"打开"。
+    // defaultDirectory / defaultName 只决定弹出来时的初始位置，用户可以随便改。
+    std::wstring BrowseFileDialog(HWND owner, const wchar_t* title, bool save,
+                                  const wchar_t* filterName, const wchar_t* filterSpec,
+                                  const wchar_t* defaultDirectory, const wchar_t* defaultName)
     {
         std::wstring result;
         HRESULT coInit = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
         IFileDialog* dialog = nullptr;
-        HRESULT hr = ::CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
+        HRESULT hr = ::CoCreateInstance(save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog,
+                                        nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
         if (SUCCEEDED(hr) && dialog)
         {
             DWORD options = 0u;
             if (SUCCEEDED(dialog->GetOptions(&options)))
             {
-                dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST);
+                options |= FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST;
+                options |= save ? FOS_OVERWRITEPROMPT : FOS_FILEMUSTEXIST;
+                dialog->SetOptions(options);
             }
             dialog->SetTitle(title);
-            COMDLG_FILTERSPEC filters[] =
+
+            if (filterName != nullptr && filterSpec != nullptr)
             {
-                { L"候选文本", L"*.txt" },
-                { L"所有文件", L"*.*" }
-            };
-            dialog->SetFileTypes(_countof(filters), filters);
+                COMDLG_FILTERSPEC filters[] =
+                {
+                    { filterName, filterSpec },
+                    { L"所有文件", L"*.*" }
+                };
+                dialog->SetFileTypes(_countof(filters), filters);
+            }
+
+            if (defaultDirectory != nullptr && defaultDirectory[0] != L'\0')
+            {
+                IShellItem* folder = nullptr;
+                if (SUCCEEDED(::SHCreateItemFromParsingName(defaultDirectory, nullptr, IID_PPV_ARGS(&folder))) && folder)
+                {
+                    dialog->SetFolder(folder);
+                    folder->Release();
+                }
+            }
+            if (defaultName != nullptr && defaultName[0] != L'\0')
+            {
+                dialog->SetFileName(defaultName);
+            }
 
             if (SUCCEEDED(dialog->Show(owner)))
             {
@@ -450,6 +485,25 @@ namespace
             ::CoUninitialize();
         }
         return result;
+    }
+
+    std::wstring BrowseTextFile(HWND owner, const wchar_t* title)
+    {
+        return BrowseFileDialog(owner, title, false, L"候选文本", L"*.txt", nullptr, nullptr);
+    }
+
+    std::wstring BrowseExeFile(HWND owner, const wchar_t* title)
+    {
+        return BrowseFileDialog(owner, title, false, L"游戏主程序", L"*.exe", nullptr, nullptr);
+    }
+
+    // 默认落在 <游戏目录>\patch@r<N>.xp3，用户可以直接改。
+    std::wstring BrowseSaveXp3File(HWND owner, const wchar_t* title, const std::wstring& defaultPath)
+    {
+        const std::wstring defaultDirectory = GetParentDirectoryLocal(defaultPath);
+        const std::wstring defaultName = GetFileNameLocal(defaultPath);
+        return BrowseFileDialog(owner, title, true, L"XP3 封包", L"*.xp3",
+                                defaultDirectory.c_str(), defaultName.c_str());
     }
 
     std::wstring GetWindowTextString(HWND hwnd)
@@ -897,6 +951,616 @@ namespace
 
         options = context.Options;
         return context.Accepted;
+    }
+
+    // ---------- 封包（目录 -> XP3）----------
+
+    constexpr wchar_t RepackDialogClassName[] = L"CxdecRepackWindow";
+    constexpr int IDC_REPACK_INPUT_EDIT = 3301;
+    constexpr int IDC_REPACK_INPUT_BROWSE = 3302;
+    constexpr int IDC_REPACK_EXE_EDIT = 3303;
+    constexpr int IDC_REPACK_EXE_BROWSE = 3304;
+    constexpr int IDC_REPACK_OUTPUT_EDIT = 3305;
+    constexpr int IDC_REPACK_OUTPUT_BROWSE = 3306;
+    constexpr int IDC_REPACK_KEYS_EDIT = 3307;
+    constexpr int IDC_REPACK_KEYS_BROWSE = 3308;
+    constexpr int IDC_REPACK_RESCRAMBLE = 3309;
+    constexpr int IDC_REPACK_STATUS = 3310;
+    constexpr int IDC_REPACK_START = 3311;
+    constexpr int IDC_REPACK_HINT_BASE = 3400;
+    constexpr int IDC_REPACK_HINT_COUNT = 8;
+    constexpr UINT RepackDoneMessage = WM_APP + 1;
+
+    typedef int(__stdcall* RepackSniffFn)(const wchar_t*, int*, char*, int, char*, int);
+    typedef int(__stdcall* RepackPackFn)(const wchar_t*, const wchar_t*, const wchar_t*, const wchar_t*,
+                                         int, int, char*, int, char*, int);
+    typedef unsigned int(__stdcall* RepackNextRevisionFn)(const wchar_t*);
+
+    struct RepackerApi
+    {
+        HMODULE Module;
+        RepackSniffFn Sniff;
+        RepackPackFn Pack;
+        RepackNextRevisionFn NextRevision;
+    };
+
+    // 只加载一次，之后复用同一份函数指针。
+    // 调用方（界面线程）总是在起后台线程之前先调一次，所以不存在并发初始化。
+    const RepackerApi* LoadRepackerApi(std::wstring& errorOut)
+    {
+        static RepackerApi api{};
+        static bool tried = false;
+        static std::wstring loadError;
+
+        if (!tried)
+        {
+            tried = true;
+
+            const std::wstring dllPath = GetModuleDllPath(L"CxdecRepacker.dll");
+            api.Module = ::LoadLibraryW(dllPath.c_str());
+            if (api.Module == nullptr)
+            {
+                loadError = FormatString(L"无法加载封包模块：\r\n%s", dllPath.c_str());
+            }
+            else
+            {
+                api.Sniff = (RepackSniffFn)::GetProcAddress(api.Module, "SniffInputDir");
+                api.Pack = (RepackPackFn)::GetProcAddress(api.Module, "Repack");
+                api.NextRevision = (RepackNextRevisionFn)::GetProcAddress(api.Module, "NextPatchRevision");
+                if (api.Sniff == nullptr || api.Pack == nullptr)
+                {
+                    loadError = FormatString(L"封包模块缺少导出接口：\r\n%s", dllPath.c_str());
+                }
+            }
+        }
+
+        if (!loadError.empty())
+        {
+            errorOut = loadError;
+            return nullptr;
+        }
+        return &api;
+    }
+
+    // 导出接口回的是 ANSI
+    std::wstring AnsiBufferToString(const char* text)
+    {
+        if (text == nullptr || text[0] == '\0')
+        {
+            return std::wstring();
+        }
+        return Encoding::AnsiToUnicode(std::string(text), Encoding::ACP);
+    }
+
+    struct RepackOptions
+    {
+        std::wstring InputDirectory;
+        std::wstring OutputXp3;
+        std::wstring ExePath;
+        std::wstring KeysRoot;
+        bool Rescramble;
+    };
+
+    // 输出默认名：<游戏目录>\patch@r<N>.xp3，修订号由封包模块扫已有补丁包得出。
+    std::wstring DefaultPatchOutputPath(const std::wstring& exePath)
+    {
+        const std::wstring gameDirectory = GetParentDirectoryLocal(exePath);
+        if (gameDirectory.empty())
+        {
+            return std::wstring();
+        }
+
+        unsigned int revision = 1u;
+        std::wstring loadError;
+        const RepackerApi* api = LoadRepackerApi(loadError);
+        if (api != nullptr && api->NextRevision != nullptr)
+        {
+            revision = api->NextRevision(gameDirectory.c_str());
+            if (revision == 0u)
+            {
+                revision = 1u;
+            }
+        }
+        return FormatString(L"%s\\patch@r%u.xp3", gameDirectory.c_str(), revision);
+    }
+
+    struct RepackDialogContext
+    {
+        RepackOptions Options;
+        bool Ready;
+        bool Busy;
+        HFONT Font;
+        HFONT BoldFont;
+        HWND StepLabels[4];
+    };
+
+    std::wstring BuildRepackStatus(HWND hwnd, RepackDialogContext* context)
+    {
+        context->Options.InputDirectory = GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_INPUT_EDIT));
+        context->Options.OutputXp3 = GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_OUTPUT_EDIT));
+        context->Options.ExePath = GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_EXE_EDIT));
+        context->Options.KeysRoot = GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_KEYS_EDIT));
+        context->Options.Rescramble = ::IsDlgButtonChecked(hwnd, IDC_REPACK_RESCRAMBLE) == BST_CHECKED;
+        context->Ready = false;
+
+        if (context->Options.InputDirectory.empty())
+        {
+            return std::wstring(L"状态：先选要封包的目录。");
+        }
+
+        std::wstring loadError;
+        const RepackerApi* api = LoadRepackerApi(loadError);
+        if (api == nullptr)
+        {
+            return L"状态：" + loadError;
+        }
+
+        std::wstring status;
+        int mode = -1;
+        char detail[1024]{};
+        char error[1024]{};
+        if (api->Sniff(context->Options.InputDirectory.c_str(), &mode, detail, sizeof(detail), error, sizeof(error)))
+        {
+            context->Ready = !context->Options.OutputXp3.empty();
+            status = L"状态：可以封包。\r\n目录形态：";
+            status += AnsiBufferToString(detail);
+        }
+        else
+        {
+            status = L"状态：这个目录还封不了 —— ";
+            status += AnsiBufferToString(error);
+        }
+
+        status += L"\r\n输出：";
+        status += context->Options.OutputXp3.empty() ? std::wstring(L"还没填（必填）") : context->Options.OutputXp3;
+        status += L"\r\n参数：";
+        status += context->Options.ExePath.empty()
+                      ? std::wstring(L"未指定游戏主程序，会用内置参数")
+                      : GetFileNameLocal(context->Options.ExePath);
+        if (!context->Options.KeysRoot.empty())
+        {
+            status += L"\r\n参数仓库：";
+            status += context->Options.KeysRoot;
+        }
+        return status;
+    }
+
+    void RefreshRepackDialog(HWND hwnd, RepackDialogContext* context)
+    {
+        if (context == nullptr)
+        {
+            return;
+        }
+        ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_STATUS), BuildRepackStatus(hwnd, context).c_str());
+        ::InvalidateRect(::GetDlgItem(hwnd, IDC_REPACK_STATUS), nullptr, TRUE);
+    }
+
+    struct RepackJob
+    {
+        HWND Owner;
+        std::wstring InputDirectory;
+        std::wstring OutputXp3;
+        std::wstring ExePath;
+        std::wstring KeysRoot;
+        bool Rescramble;
+    };
+
+    // 打包可能很久，放后台线程跑；结果通过 RepackDoneMessage 回发，
+    // 由窗口负责释放那个 string。
+    DWORD WINAPI RepackThreadProc(LPVOID parameter)
+    {
+        RepackJob* job = (RepackJob*)parameter;
+
+        bool ok = false;
+        std::wstring message;
+
+        std::wstring loadError;
+        const RepackerApi* api = LoadRepackerApi(loadError);
+        if (api == nullptr)
+        {
+            message = loadError;
+        }
+        else
+        {
+            // 先嗅探一遍：形态不对就别白打一遍包
+            int mode = -1;
+            char detail[1024]{};
+            char sniffError[2048]{};
+            if (!api->Sniff(job->InputDirectory.c_str(), &mode, detail, sizeof(detail),
+                            sniffError, sizeof(sniffError)))
+            {
+                message = L"封包失败：" + AnsiBufferToString(sniffError);
+            }
+            else
+            {
+                char result[4096]{};
+                char packError[2048]{};
+                const wchar_t* exePath = job->ExePath.empty() ? nullptr : job->ExePath.c_str();
+                const wchar_t* keysRoot = job->KeysRoot.empty() ? nullptr : job->KeysRoot.c_str();
+                if (api->Pack(job->InputDirectory.c_str(), job->OutputXp3.c_str(), exePath, keysRoot,
+                              -1, job->Rescramble ? 1 : 0,
+                              result, sizeof(result), packError, sizeof(packError)))
+                {
+                    ok = true;
+                    message = L"封包完成。\r\n\r\n";
+                    message += AnsiBufferToString(result);
+                    message += L"\r\n\r\n输出：" + job->OutputXp3;
+                }
+                else
+                {
+                    message = L"封包失败：" + AnsiBufferToString(packError);
+                }
+            }
+        }
+
+        std::wstring* payload = new std::wstring(message);
+        if (::PostMessageW(job->Owner, RepackDoneMessage, ok ? 1u : 0u, (LPARAM)payload) == FALSE)
+        {
+            delete payload;
+        }
+        delete job;
+        return 0;
+    }
+
+    LRESULT CALLBACK RepackDialogProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+    {
+        RepackDialogContext* context = (RepackDialogContext*)::GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+
+        if (message == RepackDoneMessage)
+        {
+            std::wstring* payload = (std::wstring*)lParam;
+            if (context != nullptr)
+            {
+                context->Busy = false;
+                ::SetWindowTextW(hwnd, L"Cxdec 封包（目录 → XP3）");
+                ::EnableWindow(::GetDlgItem(hwnd, IDC_REPACK_START), TRUE);
+            }
+            if (payload != nullptr)
+            {
+                ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_STATUS), payload->c_str());
+                ::MessageBoxW(hwnd, payload->c_str(), L"Cxdec 封包",
+                              wParam == 0u ? (MB_OK | MB_ICONERROR) : (MB_OK | MB_ICONINFORMATION));
+                delete payload;
+            }
+            return 0;
+        }
+
+        switch (message)
+        {
+            case WM_CREATE:
+            {
+                CREATESTRUCTW* create = (CREATESTRUCTW*)lParam;
+                context = (RepackDialogContext*)create->lpCreateParams;
+                ::SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)context);
+                context->Font = CreateLoaderUiFont(hwnd, 9, false);
+                context->BoldFont = CreateLoaderUiFont(hwnd, 10, true);
+                for (HWND& label : context->StepLabels)
+                {
+                    label = nullptr;
+                }
+
+                const int kEditX = 222;
+                const int kEditW = 524;
+                const int kBrowseX = 754;
+                const int kBrowseW = 94;
+
+                auto MakeStepLabel = [&](int y, const wchar_t* text) -> HWND
+                {
+                    return CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFT,
+                                         16, y, 200, 20, hwnd, nullptr, nullptr, nullptr);
+                };
+                auto MakeHint = [&](int y, int index, const wchar_t* text)
+                {
+                    CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFT,
+                                  kEditX, y, 630, 17, hwnd, (HMENU)(INT_PTR)(IDC_REPACK_HINT_BASE + index), nullptr, nullptr);
+                };
+                auto MakeEdit = [&](int x, int y, int width, int id)
+                {
+                    CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+                                    x, y, width, 24, hwnd, (HMENU)(INT_PTR)id, nullptr, nullptr);
+                };
+                auto MakeBrowse = [&](int y, int id)
+                {
+                    CreateWindowW(L"BUTTON", L"浏览", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                                  kBrowseX, y, kBrowseW, 26, hwnd, (HMENU)(INT_PTR)id, nullptr, nullptr);
+                };
+
+                // 第 1 步：要封包的资源目录
+                context->StepLabels[0] = MakeStepLabel(16, L"第 1 步 · 要封包的目录（必填）");
+                MakeEdit(kEditX, 13, kEditW, IDC_REPACK_INPUT_EDIT);
+                MakeBrowse(12, IDC_REPACK_INPUT_BROWSE);
+                MakeHint(43, 0, L"解包出来的资源目录；单域 / 多域 / 平铺三种形态会自动判定");
+
+                // 第 2 步：游戏主程序，用来从参数仓库取这套参数
+                context->StepLabels[1] = MakeStepLabel(76, L"第 2 步 · 游戏主程序（可选）");
+                MakeEdit(kEditX, 73, kEditW, IDC_REPACK_EXE_EDIT);
+                MakeBrowse(72, IDC_REPACK_EXE_BROWSE);
+                MakeHint(103, 1, L"用来取这套游戏的参数；不填就用内置参数，目标游戏不是它的话结果不会对");
+
+                // 第 3 步：输出 XP3
+                context->StepLabels[2] = MakeStepLabel(136, L"第 3 步 · 输出 XP3（必填）");
+                MakeEdit(kEditX, 133, kEditW, IDC_REPACK_OUTPUT_EDIT);
+                MakeBrowse(132, IDC_REPACK_OUTPUT_BROWSE);
+                MakeHint(163, 2, L"默认写到游戏目录下的 patch@rN.xp3，可以直接改");
+
+                // 第 4 步：参数仓库目录，留空走封包模块自己的默认
+                context->StepLabels[3] = MakeStepLabel(196, L"第 4 步 · 参数仓库（可选）");
+                MakeEdit(kEditX, 193, kEditW, IDC_REPACK_KEYS_EDIT);
+                MakeBrowse(192, IDC_REPACK_KEYS_BROWSE);
+                MakeHint(223, 3, L"留空表示用封包模块默认的 keys 目录；参数按 EXE 内容摘要存放，可以跨游戏共用");
+
+                CreateWindowW(L"BUTTON", L"把干净文本重新加扰（补丁包通常要勾）", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                              kEditX, 250, kEditW, 22, hwnd, (HMENU)(INT_PTR)IDC_REPACK_RESCRAMBLE, nullptr, nullptr);
+                MakeHint(275, 4, L"只对 FF FE 开头的干净文本生效，其它文件原样打进去");
+
+                CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_LEFT,
+                              16, 302, 832, 96, hwnd, (HMENU)(INT_PTR)IDC_REPACK_STATUS, nullptr, nullptr);
+                CreateWindowW(L"BUTTON", L"开始封包", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                              650, 406, 110, 32, hwnd, (HMENU)(INT_PTR)IDC_REPACK_START, nullptr, nullptr);
+                CreateWindowW(L"BUTTON", L"取消", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                              768, 406, 90, 32, hwnd, (HMENU)IDCANCEL, nullptr, nullptr);
+
+                ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_INPUT_EDIT), context->Options.InputDirectory.c_str());
+                ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_EXE_EDIT), context->Options.ExePath.c_str());
+                ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_OUTPUT_EDIT), context->Options.OutputXp3.c_str());
+                ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_KEYS_EDIT), context->Options.KeysRoot.c_str());
+                ::CheckDlgButton(hwnd, IDC_REPACK_RESCRAMBLE, context->Options.Rescramble ? BST_CHECKED : BST_UNCHECKED);
+
+                ::SendMessageW(hwnd, WM_SETFONT, (WPARAM)context->Font, TRUE);
+                ::EnumChildWindows(hwnd, ApplyLoaderFontToChild, (LPARAM)context->Font);
+                for (HWND label : context->StepLabels)
+                {
+                    if (label)
+                    {
+                        ::SendMessageW(label, WM_SETFONT, (WPARAM)context->BoldFont, TRUE);
+                    }
+                }
+                RefreshRepackDialog(hwnd, context);
+                return 0;
+            }
+            case WM_CTLCOLORSTATIC:
+            {
+                if (!context)
+                {
+                    break;
+                }
+                const int controlId = ::GetDlgCtrlID((HWND)lParam);
+                HDC dc = (HDC)wParam;
+                ::SetBkMode(dc, TRANSPARENT);
+                if (controlId == IDC_REPACK_STATUS)
+                {
+                    ::SetTextColor(dc, context->Ready ? RGB(0, 110, 40) : RGB(178, 78, 0));
+                    return (LRESULT)::GetSysColorBrush(COLOR_WINDOW);
+                }
+                if (controlId >= IDC_REPACK_HINT_BASE && controlId < IDC_REPACK_HINT_BASE + IDC_REPACK_HINT_COUNT)
+                {
+                    ::SetTextColor(dc, RGB(110, 110, 110));
+                    return (LRESULT)::GetSysColorBrush(COLOR_WINDOW);
+                }
+                break;
+            }
+            case WM_COMMAND:
+                if (!context)
+                {
+                    break;
+                }
+                switch (LOWORD(wParam))
+                {
+                    case IDC_REPACK_INPUT_BROWSE:
+                    {
+                        std::wstring folder = BrowseFolder(hwnd, L"选择要封包的资源目录");
+                        if (!folder.empty())
+                        {
+                            ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_INPUT_EDIT), folder.c_str());
+                            RefreshRepackDialog(hwnd, context);
+                        }
+                        return 0;
+                    }
+                    case IDC_REPACK_EXE_BROWSE:
+                    {
+                        std::wstring exe = BrowseExeFile(hwnd, L"选择游戏主程序");
+                        if (!exe.empty())
+                        {
+                            ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_EXE_EDIT), exe.c_str());
+                            // 输出还是空的就顺手填上 patch@rN.xp3
+                            if (GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_OUTPUT_EDIT)).empty())
+                            {
+                                const std::wstring defaultOutput = DefaultPatchOutputPath(exe);
+                                ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_OUTPUT_EDIT), defaultOutput.c_str());
+                            }
+                            RefreshRepackDialog(hwnd, context);
+                        }
+                        return 0;
+                    }
+                    case IDC_REPACK_OUTPUT_BROWSE:
+                    {
+                        const std::wstring current = GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_OUTPUT_EDIT));
+                        const std::wstring fallback = current.empty()
+                                                          ? DefaultPatchOutputPath(GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_EXE_EDIT)))
+                                                          : current;
+                        std::wstring target = BrowseSaveXp3File(hwnd, L"选择输出 XP3", fallback);
+                        if (target.empty())
+                        {
+                            return 0;
+                        }
+                        // 用户只输了名字、没写扩展名时补上
+                        if (target.size() < 4u || _wcsicmp(target.c_str() + target.size() - 4u, L".xp3") != 0)
+                        {
+                            target += L".xp3";
+                        }
+                        ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_OUTPUT_EDIT), target.c_str());
+                        RefreshRepackDialog(hwnd, context);
+                        return 0;
+                    }
+                    case IDC_REPACK_KEYS_BROWSE:
+                    {
+                        std::wstring folder = BrowseFolder(hwnd, L"选择参数仓库目录");
+                        if (!folder.empty())
+                        {
+                            ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_KEYS_EDIT), folder.c_str());
+                            RefreshRepackDialog(hwnd, context);
+                        }
+                        return 0;
+                    }
+                    case IDC_REPACK_RESCRAMBLE:
+                        RefreshRepackDialog(hwnd, context);
+                        return 0;
+                    case IDC_REPACK_INPUT_EDIT:
+                    case IDC_REPACK_EXE_EDIT:
+                    case IDC_REPACK_OUTPUT_EDIT:
+                    case IDC_REPACK_KEYS_EDIT:
+                        // 只认失焦：刷新要扫一遍目录，不能跟着每次按键跑
+                        if (HIWORD(wParam) == EN_KILLFOCUS)
+                        {
+                            RefreshRepackDialog(hwnd, context);
+                        }
+                        return 0;
+                    case IDC_REPACK_START:
+                    {
+                        if (context->Busy)
+                        {
+                            return 0;
+                        }
+                        RefreshRepackDialog(hwnd, context);
+                        if (context->Options.InputDirectory.empty())
+                        {
+                            ::MessageBoxW(hwnd, L"先选要封包的目录。", L"Cxdec 封包", MB_OK | MB_ICONWARNING);
+                            return 0;
+                        }
+                        if (context->Options.OutputXp3.empty())
+                        {
+                            ::MessageBoxW(hwnd, L"先填输出 XP3 的路径。", L"Cxdec 封包", MB_OK | MB_ICONWARNING);
+                            return 0;
+                        }
+                        if (!context->Ready)
+                        {
+                            ::MessageBoxW(hwnd, L"这个目录还判定不出形态，先按上面的提示改一改。", L"Cxdec 封包", MB_OK | MB_ICONWARNING);
+                            return 0;
+                        }
+
+                        RepackJob* job = new RepackJob{};
+                        job->Owner = hwnd;
+                        job->InputDirectory = context->Options.InputDirectory;
+                        job->OutputXp3 = context->Options.OutputXp3;
+                        job->ExePath = context->Options.ExePath;
+                        job->KeysRoot = context->Options.KeysRoot;
+                        job->Rescramble = context->Options.Rescramble;
+
+                        DWORD threadId = 0u;
+                        HANDLE thread = ::CreateThread(nullptr, 0u, RepackThreadProc, job, 0u, &threadId);
+                        if (thread == nullptr)
+                        {
+                            delete job;
+                            ::MessageBoxW(hwnd, L"起不了后台线程。", L"Cxdec 封包", MB_OK | MB_ICONERROR);
+                            return 0;
+                        }
+                        ::CloseHandle(thread);
+
+                        context->Busy = true;
+                        ::EnableWindow(::GetDlgItem(hwnd, IDC_REPACK_START), FALSE);
+                        ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_STATUS), L"状态：正在封包，请稍候……");
+                        ::SetWindowTextW(hwnd, L"Cxdec 封包（目录 → XP3）- 正在封包");
+                        return 0;
+                    }
+                    case IDCANCEL:
+                        ::DestroyWindow(hwnd);
+                        return 0;
+                }
+                break;
+            case WM_CLOSE:
+                if (context != nullptr && context->Busy)
+                {
+                    ::MessageBoxW(hwnd, L"正在封包，等它写完再关。", L"Cxdec 封包", MB_OK | MB_ICONINFORMATION);
+                    return 0;
+                }
+                ::DestroyWindow(hwnd);
+                return 0;
+            case WM_DESTROY:
+                if (context)
+                {
+                    if (context->Font)
+                    {
+                        ::DeleteObject(context->Font);
+                        context->Font = nullptr;
+                    }
+                    if (context->BoldFont)
+                    {
+                        ::DeleteObject(context->BoldFont);
+                        context->BoldFont = nullptr;
+                    }
+                }
+                return 0;
+        }
+        return ::DefWindowProcW(hwnd, message, wParam, lParam);
+    }
+
+    void ShowRepackDialog(HWND owner)
+    {
+        std::wstring loadError;
+        if (LoadRepackerApi(loadError) == nullptr)
+        {
+            ::MessageBoxW(owner, loadError.c_str(), L"Cxdec 封包", MB_OK | MB_ICONERROR);
+            return;
+        }
+
+        RepackDialogContext context{};
+        context.Ready = false;
+        context.Busy = false;
+        context.Font = nullptr;
+        context.BoldFont = nullptr;
+        for (HWND& label : context.StepLabels)
+        {
+            label = nullptr;
+        }
+
+        // Loader 启动时就拿到了游戏主程序，直接带上，省得再选一次
+        context.Options.ExePath = g_KrkrExeFullPath;
+        const std::wstring extractOutput = CombinePathLocal(g_KrkrExeDirectory, L"Extractor_Output");
+        if (DirectoryExistsLocal(extractOutput))
+        {
+            context.Options.InputDirectory = extractOutput;
+        }
+        context.Options.OutputXp3 = DefaultPatchOutputPath(context.Options.ExePath);
+        context.Options.Rescramble = true;
+
+        WNDCLASSEXW windowClass{};
+        windowClass.cbSize = sizeof(windowClass);
+        windowClass.lpfnWndProc = RepackDialogProc;
+        windowClass.hInstance = ::GetModuleHandleW(nullptr);
+        windowClass.hCursor = ::LoadCursorW(nullptr, IDC_ARROW);
+        windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+        windowClass.lpszClassName = RepackDialogClassName;
+        ::RegisterClassExW(&windowClass);
+
+        HWND hwnd = ::CreateWindowExW(WS_EX_DLGMODALFRAME,
+                                      RepackDialogClassName,
+                                      L"Cxdec 封包（目录 → XP3）",
+                                      WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+                                      CW_USEDEFAULT,
+                                      CW_USEDEFAULT,
+                                      880,
+                                      480,
+                                      owner,
+                                      nullptr,
+                                      windowClass.hInstance,
+                                      &context);
+        if (!hwnd)
+        {
+            return;
+        }
+
+        ::EnableWindow(owner, FALSE);
+        ::ShowWindow(hwnd, SW_SHOW);
+        ::UpdateWindow(hwnd);
+
+        MSG msg{};
+        while (::IsWindow(hwnd) && ::GetMessageW(&msg, nullptr, 0, 0) > 0)
+        {
+            ::TranslateMessage(&msg);
+            ::DispatchMessageW(&msg);
+        }
+        ::EnableWindow(owner, TRUE);
+        ::SetForegroundWindow(owner);
     }
 
     void SetLoaderWindowHandleEnv(HWND hwnd)
@@ -1445,6 +2109,10 @@ INT_PTR CALLBACK LoaderDialogWindProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                 case IDC_KeyStatic:
                     // 只做静态提取；运行时动态提取已废弃，不再注入 CxdecKeyDumper.dll。
                     RunStaticKeyExtraction(hwnd);
+                    break;
+                case IDC_Repack:
+                    // 封包只在本进程里跑，不进游戏，所以不设 injectDllFileName。
+                    ShowRepackDialog(hwnd);
                     break;
                 case IDC_HashRestore:
                     if (!ShowHookHashRestoreLaunchDialog(hwnd, hookHashOptions))

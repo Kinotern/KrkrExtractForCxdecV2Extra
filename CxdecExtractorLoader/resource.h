@@ -12,6 +12,7 @@
 #define IDC_KeyStatic                   1008
 #define IDC_BrowseExe                   1009
 #define IDC_DropZone                    1010
+#define IDC_Repack                      1011
 
 // 新对象的默认值
 // 
@@ -19,7 +20,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        104
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1010
+#define _APS_NEXT_CONTROL_VALUE         1012
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

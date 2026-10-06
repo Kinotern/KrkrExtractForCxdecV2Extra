@@ -60,7 +60,7 @@ IDI_MainIcon            ICON                    "AmetoYuki_1.ico"
 // Dialog
 //
 
-IDD_MainForm DIALOGEX 0, 0, 261, 168
+IDD_MainForm DIALOGEX 0, 0, 261, 190
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "CxdecExtractorLoader"
 FONT 9, "微软雅黑", 400, 0, 0x86
@@ -69,9 +69,10 @@ BEGIN
     PUSHBUTTON      "加载运行时恢复Hash映射模块",IDC_StringDumper,38,42,185,14,NOT WS_TABSTOP
     PUSHBUTTON      "加载Hook撞库恢复Hash映射模块",IDC_HashRestore,38,67,185,14,NOT WS_TABSTOP
     PUSHBUTTON      "提取Key",IDC_KeyStatic,38,92,185,14,NOT WS_TABSTOP
-    LTEXT           "提取进度",IDC_KeyProgressLabel,25,128,40,10
-    CONTROL         "",IDC_KeyProgress,"msctls_progress32",WS_BORDER | WS_TABSTOP,25,141,180,12
-    LTEXT           "0%",IDC_KeyProgressText,214,129,20,10
+    PUSHBUTTON      "封包（目录 → XP3）",IDC_Repack,38,117,185,14,NOT WS_TABSTOP
+    LTEXT           "提取进度",IDC_KeyProgressLabel,25,150,40,10
+    CONTROL         "",IDC_KeyProgress,"msctls_progress32",WS_BORDER | WS_TABSTOP,25,163,180,12
+    LTEXT           "0%",IDC_KeyProgressText,214,151,20,10
 END
 
 // 双击启动时先弹出的独立拖放窗口；拿到 exe 后就关掉，与功能窗口互不干扰。

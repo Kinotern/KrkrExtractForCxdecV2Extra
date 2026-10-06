@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{C7D3E9A1-4B52-4F08-9E6C-3A1D5B7F2E40}</ProjectGuid>
+    <RootNamespace>CxdecRepacker</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>$(ProjectDir)..\Release\CxdecExtractordll\</OutDir>
+    <IntDir>$(ProjectDir)$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>$(ProjectDir)..\Debug\</OutDir>
+    <IntDir>$(ProjectDir)$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;_WIN32_WINNT=0x601;WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)Common;$(ProjectDir)third_party\zlib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <GuardEHContMetadata>false</GuardEHContMetadata>
+      <ControlFlowGuard>false</ControlFlowGuard>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;_WIN32_WINNT=0x601;WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)Common;$(ProjectDir)third_party\zlib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <GuardEHContMetadata>false</GuardEHContMetadata>
+      <ControlFlowGuard>false</ControlFlowGuard>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+    </Link>
+    <PostBuildEvent>
+      <Command>del "$(OutDir)CxdecRepacker.lib" "$(OutDir)CxdecRepacker.exp" 2&gt;nul</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="ExportApi.cpp" />
+    <ClCompile Include="DllMain.cpp" />
+    <ClCompile Include="crypto\aead.cpp" />
+    <ClCompile Include="crypto\blake2s.cpp" />
+    <ClCompile Include="crypto\chacha.cpp" />
+    <ClCompile Include="crypto\checksum.cpp" />
+    <ClCompile Include="crypto\poly1305.cpp" />
+    <ClCompile Include="crypto\sha3.cpp" />
+    <ClCompile Include="crypto\siphash.cpp" />
+    <ClCompile Include="core\archive.cpp" />
+    <ClCompile Include="core\drip.cpp" />
+    <ClCompile Include="core\filter.cpp" />
+    <ClCompile Include="core\mapping.cpp" />
+    <ClCompile Include="core\pack.cpp" />
+    <ClCompile Include="core\resource_hash.cpp" />
+    <ClCompile Include="core\text_scramble.cpp" />
+    <ClCompile Include="core\tjs_variant.cpp" />
+    <ClCompile Include="core\xp3.cpp" />
+    <ClCompile Include="params\cafestella.cpp" />
+    <ClCompile Include="params\cafestella_data.cpp" />
+    <ClCompile Include="pack_static\enumerate.cpp" />
+    <ClCompile Include="pack_static\pack_static.cpp" />
+    <ClCompile Include="pack_static\keystore.cpp" />
+    <ClCompile Include="hxv4p\Hxv4p.cpp" />
+    <ClCompile Include="hxv4p\ZlibInflate.cpp" />
+    <ClCompile Include="pack_static\profile.cpp" />
+    <ClCompile Include="pack_static\sniff.cpp" />
+    <ClCompile Include="third_party\zlib\adler32.c" />
+    <ClCompile Include="third_party\zlib\compress.c" />
+    <ClCompile Include="third_party\zlib\crc32.c" />
+    <ClCompile Include="third_party\zlib\deflate.c" />
+    <ClCompile Include="third_party\zlib\gzclose.c" />
+    <ClCompile Include="third_party\zlib\gzlib.c" />
+    <ClCompile Include="third_party\zlib\gzread.c" />
+    <ClCompile Include="third_party\zlib\gzwrite.c" />
+    <ClCompile Include="third_party\zlib\infback.c" />
+    <ClCompile Include="third_party\zlib\inffast.c" />
+    <ClCompile Include="third_party\zlib\inflate.c" />
+    <ClCompile Include="third_party\zlib\inftrees.c" />
+    <ClCompile Include="third_party\zlib\trees.c" />
+    <ClCompile Include="third_party\zlib\uncompr.c" />
+    <ClCompile Include="third_party\zlib\zutil.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="ExportApi.h" />
+    <ClInclude Include="crypto\aead.h" />
+    <ClInclude Include="crypto\blake2s.h" />
+    <ClInclude Include="crypto\chacha.h" />
+    <ClInclude Include="crypto\checksum.h" />
+    <ClInclude Include="crypto\poly1305.h" />
+    <ClInclude Include="crypto\sha3.h" />
+    <ClInclude Include="crypto\siphash.h" />
+    <ClInclude Include="crypto\types.h" />
+    <ClInclude Include="core\archive.h" />
+    <ClInclude Include="core\drip.h" />
+    <ClInclude Include="core\filter.h" />
+    <ClInclude Include="core\mapping.h" />
+    <ClInclude Include="core\pack.h" />
+    <ClInclude Include="core\resource_hash.h" />
+    <ClInclude Include="core\text_scramble.h" />
+    <ClInclude Include="core\tjs_variant.h" />
+    <ClInclude Include="core\xp3.h" />
+    <ClInclude Include="params\cafestella.h" />
+    <ClInclude Include="pack_static\enumerate.h" />
+    <ClInclude Include="pack_static\pack_static.h" />
+    <ClInclude Include="pack_static\keystore.h" />
+    <ClInclude Include="hxv4p\Hxv4p.h" />
+    <ClInclude Include="hxv4p\ZlibInflate.h" />
+    <ClInclude Include="pack_static\profile.h" />
+    <ClInclude Include="pack_static\sniff.h" />
+    <ClInclude Include="third_party\zlib\crc32.h" />
+    <ClInclude Include="third_party\zlib\deflate.h" />
+    <ClInclude Include="third_party\zlib\gzguts.h" />
+    <ClInclude Include="third_party\zlib\inffast.h" />
+    <ClInclude Include="third_party\zlib\inffixed.h" />
+    <ClInclude Include="third_party\zlib\inflate.h" />
+    <ClInclude Include="third_party\zlib\inftrees.h" />
+    <ClInclude Include="third_party\zlib\trees.h" />
+    <ClInclude Include="third_party\zlib\zconf.h" />
+    <ClInclude Include="third_party\zlib\zlib.h" />
+    <ClInclude Include="third_party\zlib\zutil.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

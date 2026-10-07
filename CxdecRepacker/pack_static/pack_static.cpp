@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 
 namespace hxv4::pack_static {
 
@@ -90,12 +89,23 @@ PackReport pack_static(const std::string& utf8_dir, const std::string& utf8_out,
     r.profile_id = pr.profile->id;
     r.profile_note = pr.note;
 
+    // 盐可以由调用方覆盖。派生的那套不对时（非默认 mediaName 的游戏）这是唯一入口；
+    // 留空就一路用参数里带的。override 要活到第 4 步枚举，所以在这一层声明。
+    GameProfile overridden;
+    if (!opts.media_name.empty() && opts.media_name != pr.profile->media_name) {
+        overridden = *pr.profile;
+        overridden.media_name = opts.media_name;
+        pr.profile = &overridden;
+        r.profile_note += "；盐已覆盖为 \"" + opts.media_name + "\"";
+    }
+    r.media_name = pr.profile->media_name;
+
     // ---- 3. open_flag ----
     r.open_flag = (opts.open_flag_override >= 0)
                       ? static_cast<uint16_t>(opts.open_flag_override)
                       : default_open_flag(mode);
 
-    // ---- 4. 枚举 ----
+    // ---- 4. 枚举（只出元数据；文件内容留到打包时再按需读）----
     std::vector<PackEntry> entries;
     EnumerateStats stats;
     if (!enumerate_directory(utf8_dir, mode, *pr.profile, opts.rescramble, entries, stats,
@@ -103,33 +113,32 @@ PackReport pack_static(const std::string& utf8_dir, const std::string& utf8_out,
         return r;
     }
 
-    // ---- 5. 打包 ----
+    // ---- 5. 边编码边落盘 ----
+    //
+    // 不再把整包拼在内存里：以前 351 MB 的输入要吃掉 1.1～1.4 GB 地址空间，
+    // 32 位进程里分配失败就抛 bad_alloc。
     PackContext ctx;
     ctx.drip = &pr.profile->drip;
     ctx.open_flag = r.open_flag;
     ctx.index_keys = pr.profile->index;
 
-    const std::vector<uint8_t> bytes = pack_archive(entries, ctx);
-    if (bytes.empty()) {
-        r.error = "打包失败（参数与数据不匹配？）";
-        return r;
+    auto sink = MakeFileSink(utf8_out, r.error);
+    if (!sink) return r;
+
+    PackStats pack_stats;
+    if (!pack_archive_stream(entries, ctx, *sink, pack_stats, r.error)) {
+        return r;  // sink 析构时会把 .part 删掉
     }
 
-    // ---- 6. 写出 ----
-    std::ofstream f(fs::u8path(utf8_out), std::ios::binary);
-    if (!f) {
+    // ---- 6. 收尾：到这一步才把 .part 改名成最终文件 ----
+    if (!sink->Finish()) {
         r.error = "写不出文件：" + utf8_out;
-        return r;
-    }
-    f.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    if (!f) {
-        r.error = "写入中断：" + utf8_out;
         return r;
     }
 
     r.files = stats.files;
-    r.rescrambled = stats.rescrambled;
-    r.bytes = bytes.size();
+    r.rescrambled = pack_stats.rescrambled;
+    r.bytes = pack_stats.bytes;
     return r;
 }
 

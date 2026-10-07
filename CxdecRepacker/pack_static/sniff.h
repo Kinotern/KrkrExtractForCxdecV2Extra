@@ -38,4 +38,10 @@ SniffResult sniff_directory(const std::string& utf8_dir);
 
 const char* mode_name(InputMode mode);
 
+// 解包器留下的清单文件（扩展名 .alst），不是资源。
+//
+// 嗅探和枚举**必须用同一个判断**：否则会出现「嗅探说忽略了 N 个清单文件」、
+// 实际却把它当资源打进包，条目数也对不上。
+bool is_manifest_file(const std::string& utf8_name);
+
 }  // namespace hxv4::pack_static

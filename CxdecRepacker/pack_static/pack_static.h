@@ -16,6 +16,10 @@ struct PackOptions {
     std::string profile_root = "keys";
     // 可选：游戏 EXE。给了就按它找派生参数，找不到回落内置并在报告里写明。
     std::string exe_path;
+    // 可选：覆盖盐（pathHash/fileHash 的额外输入串）。
+    // 留空就用参数里带的那个（派生产物会记下来，没有则默认 "xp3hnp"）。
+    // 只有派生的那套不对时才需要手动指定。
+    std::string media_name;
     // 1/2/3；-1 = 用嗅探结果。
     int32_t mode_override = -1;
     // 把干净文本搅回加扰形态。
@@ -35,6 +39,9 @@ struct PackReport {
     uint16_t open_flag = 0;
     std::string profile_id;
     std::string profile_note;
+    // 这次**实际用到**的盐。写进报告是因为盐错了完全看不出来（不报错、不崩，
+    // 游戏只是当这个包不存在），至少让界面能把它显示出来。
+    std::string media_name;
     bool derived = false;        // 这次是不是现场派生出来的
     std::string derive_note;     // 派生的结果或失败原因
     std::string detail;  // 嗅探给的一句话

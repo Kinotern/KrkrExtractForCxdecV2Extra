@@ -27,6 +27,9 @@ __declspec(dllexport) BOOL __stdcall SniffInputDir(
 // 目录 -> xp3。
 //   exePath        可空；给了就按它查参数仓库
 //   keysRoot       参数仓库根目录（ImportKeyFile 写的就是这个）；可空，默认 "keys"
+//   mediaName      盐（pathHash/fileHash 的额外输入串）。**可空**，留空就用参数里
+//                  带的那个（派生产物会记下来，没有则 "xp3hnp"）。
+//                  只有派生的那套不对时才需要手动指定。
 //   modeOverride   1/2/3；传 -1 用嗅探结果
 //   rescramble     非 0 时把干净文本搅回加扰形态
 //   detailOut      会写明用了哪套参数；回落内置时会标注出来
@@ -35,6 +38,7 @@ __declspec(dllexport) BOOL __stdcall Repack(
     const wchar_t* outputXp3,
     const wchar_t* exePath,
     const wchar_t* keysRoot,
+    const wchar_t* mediaName,
     int modeOverride,
     int rescramble,
     char* detailOut, int detailOutSize,
@@ -64,8 +68,9 @@ __declspec(dllexport) BOOL __stdcall DeriveKeys(
     char* errorOut, int errorOutSize);
 
 // 让导出表同时包含无装饰名，便于 GetProcAddress 直接按名字查找
+// 后面的 @N 是 __stdcall 的参数字节数，改签名就得跟着改
 #pragma comment(linker, "/EXPORT:SniffInputDir=_SniffInputDir@24")
-#pragma comment(linker, "/EXPORT:Repack=_Repack@40")
+#pragma comment(linker, "/EXPORT:Repack=_Repack@44")
 #pragma comment(linker, "/EXPORT:NextPatchRevision=_NextPatchRevision@4")
 #pragma comment(linker, "/EXPORT:ImportKeyFile=_ImportKeyFile@28")
 #pragma comment(linker, "/EXPORT:DeriveKeys=_DeriveKeys@24")

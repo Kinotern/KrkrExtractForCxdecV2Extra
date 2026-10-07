@@ -1,16 +1,23 @@
 #include "core/pack.h"
 
 #include "core/filter.h"
+#include "core/text_scramble.h"
 #include "core/tjs_variant.h"
 #include "crypto/aead.h"
 #include "crypto/checksum.h"
 
 #include <zlib.h>
 
+#include <windows.h>
+
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 
 namespace hxv4 {
 namespace {
+
+namespace fs = std::filesystem;
 
 void put32(std::vector<uint8_t>& out, uint32_t v) {
     for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));
@@ -31,14 +38,61 @@ std::vector<uint8_t> deflate(const std::vector<uint8_t>& in) {
     return out;
 }
 
-// 把条目数据编码成磁盘形式：先过滤器，再（可选）zlib。
+// 数据按需读进来：留在磁盘上的就不必先占一份内存
+bool load_plaintext(const PackEntry& entry, std::vector<uint8_t>& out, std::string& err) {
+    if (entry.source_path.empty()) {
+        out = entry.plaintext;
+        return true;
+    }
+    std::ifstream f(fs::u8path(entry.source_path), std::ios::binary);
+    if (!f) {
+        err = "读不到 " + entry.source_path;
+        return false;
+    }
+    f.seekg(0, std::ios::end);
+    const std::streamoff n = f.tellg();
+    f.seekg(0, std::ios::beg);
+    out.assign(static_cast<size_t>(n > 0 ? n : 0), 0);
+    if (!out.empty()) f.read(reinterpret_cast<char*>(out.data()), n);
+    if (!f && !f.eof()) {
+        err = "读不到 " + entry.source_path;
+        return false;
+    }
+    return true;
+}
+
+// 编码过程中才知道、但要写进索引的那几个值
+struct EncodedInfo {
+    uint64_t original_size = 0;
+    uint32_t adler = 0;
+    bool rescrambled = false;
+};
+
+// 把条目数据编码成磁盘形式：读盘 → （可选）加扰 → 过滤器 → （可选）zlib。
 bool encode_entry(const PackEntry& entry, const DripProgram& drip, uint16_t open_flag,
-                  std::vector<uint8_t>& out, Xp3Segment& seg) {
+                  std::vector<uint8_t>& out, Xp3Segment& seg, EncodedInfo& info,
+                  std::string& err) {
     seg.flags = 0;
-    seg.original_size = entry.plaintext.size();
+
+    std::vector<uint8_t> buf;
+    if (!load_plaintext(entry, buf, err)) return false;
+
+    // 加扰会把 2 字节 BOM 换成 5 字节头，所以必须在算 original_size 之前做
+    if (entry.rescramble) {
+        std::vector<uint8_t> scrambled;
+        // 非文本返回 false、什么都不做，自带门控
+        if (scramble_text(buf.data(), buf.size(), scrambled)) {
+            buf = std::move(scrambled);
+            info.rescrambled = true;
+        }
+    }
+
+    info.original_size = buf.size();
+    info.adler = crypto::adler32(buf.data(), buf.size());
+    seg.original_size = buf.size();
 
     if (entry.raw) {
-        out = entry.plaintext;
+        out = std::move(buf);
         seg.archived_size = out.size();
         return true;
     }
@@ -46,14 +100,18 @@ bool encode_entry(const PackEntry& entry, const DripProgram& drip, uint16_t open
     uint8_t seed_state[48];
     // 注意：build_filter_state 内部**自己**会按 open_flag 用 holder_words[2]/[3]
     // 扰动 key，所以这里必须传映射表里那个原始 key，不能再预先异或一次。
-    if (!drip.build_filter_state(entry.key, open_flag, seed_state)) return false;
-
-    std::vector<uint8_t> buf = entry.plaintext;
+    if (!drip.build_filter_state(entry.key, open_flag, seed_state)) {
+        err = "过滤器状态构造失败";
+        return false;
+    }
     FilterState(seed_state).apply(buf.data(), buf.size(), 0);
 
     if (entry.compress) {
         std::vector<uint8_t> comp = deflate(buf);
-        if (comp.empty() && !buf.empty()) return false;
+        if (comp.empty() && !buf.empty()) {
+            err = "压缩失败";
+            return false;
+        }
         seg.flags = 1;
         buf = std::move(comp);
     }
@@ -62,7 +120,101 @@ bool encode_entry(const PackEntry& entry, const DripProgram& drip, uint16_t open
     return true;
 }
 
+// 全在内存里的 sink，只服务于小规模的复刻验证
+class MemorySink : public ArchiveSink {
+public:
+    bool Write(const uint8_t* data, size_t len) override {
+        bytes_.insert(bytes_.end(), data, data + len);
+        return true;
+    }
+    bool Patch(uint64_t offset, const uint8_t* data, size_t len) override {
+        if (offset + len > bytes_.size()) return false;
+        std::memcpy(bytes_.data() + offset, data, len);
+        return true;
+    }
+    uint64_t Tell() const override { return bytes_.size(); }
+    std::vector<uint8_t> TakeBytes() { return std::move(bytes_); }
+
+private:
+    std::vector<uint8_t> bytes_;
+};
+
+// 写的是 .part，Finish() 成功才改名过去。中途失败（含异常展开）由析构函数
+// 把 .part 删掉——否则游戏目录里会留个半截的 patch@rN.xp3 被当成补丁包读。
+class FileSink : public ArchiveSink {
+public:
+    FileSink(fs::path final_path, fs::path part_path)
+        : final_(std::move(final_path)), part_(std::move(part_path)) {
+        file_.open(part_, std::ios::binary | std::ios::out | std::ios::trunc);
+    }
+
+    ~FileSink() override {
+        if (file_.is_open()) file_.close();
+        if (!committed_) {
+            std::error_code ec;
+            fs::remove(part_, ec);
+        }
+    }
+
+    bool Ok() const { return file_.is_open(); }
+
+    bool Write(const uint8_t* data, size_t len) override {
+        if (!file_.is_open()) return false;
+        file_.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(len));
+        if (!file_) return false;
+        cursor_ += len;
+        return true;
+    }
+
+    bool Patch(uint64_t offset, const uint8_t* data, size_t len) override {
+        if (!file_.is_open()) return false;
+        const std::streampos here = file_.tellp();
+        file_.seekp(static_cast<std::streamoff>(offset), std::ios::beg);
+        file_.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(len));
+        const bool ok = static_cast<bool>(file_);
+        // 回填本来就在最后一步，但别赌调用顺序
+        if (here != std::streampos(-1)) file_.seekp(here);
+        return ok;
+    }
+
+    uint64_t Tell() const override { return cursor_; }
+
+    bool Finish() override {
+        if (!file_.is_open()) return false;
+        file_.flush();
+        if (!file_) return false;
+        file_.close();
+        // 目标可能已经存在（重封同名补丁包），要允许覆盖
+        if (::MoveFileExW(part_.wstring().c_str(), final_.wstring().c_str(),
+                          MOVEFILE_REPLACE_EXISTING) == FALSE) {
+            return false;
+        }
+        committed_ = true;
+        return true;
+    }
+
+private:
+    fs::path final_;
+    fs::path part_;
+    std::fstream file_;
+    uint64_t cursor_ = 0;
+    bool committed_ = false;
+};
+
 }  // namespace
+
+std::unique_ptr<ArchiveSink> MakeFileSink(const std::string& utf8_path, std::string& err) {
+    const fs::path target = fs::u8path(utf8_path);
+    fs::path part = target;
+    part += L".part";
+
+    auto sink = std::make_unique<FileSink>(target, part);
+    if (!sink->Ok()) {
+        err = "写不出文件：" + utf8_path;
+        return nullptr;
+    }
+    return sink;
+}
 
 uint64_t hx_per_file_key(size_t index) {
     uint64_t state = 0x55555555ull + (index + 1) * 0x9E3779B97F4A7C15ull;
@@ -72,41 +224,65 @@ uint64_t hx_per_file_key(size_t index) {
     return x ^ (x >> 31);
 }
 
-std::vector<uint8_t> pack_archive(const std::vector<PackEntry>& entries, const PackContext& ctx) {
-    if (ctx.drip == nullptr || !ctx.drip->valid()) return {};
+bool pack_archive_stream(const std::vector<PackEntry>& entries, const PackContext& ctx,
+                         ArchiveSink& sink, PackStats& stats, std::string& err) {
+    if (ctx.drip == nullptr || !ctx.drip->valid()) {
+        err = "参数无效";
+        return false;
+    }
 
     const size_t total = entries.size();
-
-    // ---- 1. 数据区 + 段表 ----
-    std::vector<uint8_t> data;
     std::vector<Xp3Entry> index_entries;
     std::vector<MappingRecord> records;
     index_entries.reserve(total);
     records.reserve(total);
 
+    // ---- 1. 数据区 + 段表（边编码边写，条目数据不在内存里累积）----
+    //
+    // 头部 40 字节先写占位：index_offset 要等负载写完才算得出来，最后回填。
+    std::vector<uint8_t> header;
+    header.reserve(40);
+    header.insert(header.end(), kXp3Magic, kXp3Magic + sizeof(kXp3Magic));  // 0x00..0x0A
+    put64(header, 0x17);                                                    // 0x0B 诱饵
+    put32(header, 1);                                                       // 0x13
+    header.push_back(0x80);                                                 // 0x17
+    put64(header, 0);                                                       // 0x18
+    put64(header, 0);                                                       // 0x20 占位
+    if (!sink.Write(header.data(), header.size())) {
+        err = "写入失败";
+        return false;
+    }
+
     // 40 字节头部之后就是条目数据；条目 0（若有）自然落在偏移 40
     uint64_t cursor = 40;
+    uint32_t rescrambled = 0;
+
     for (size_t i = 0; i < entries.size(); ++i) {
         const PackEntry& in = entries[i];
 
         std::vector<uint8_t> encoded;
         Xp3Segment seg;
-        if (!encode_entry(in, *ctx.drip, ctx.open_flag, encoded, seg)) return {};
+        EncodedInfo info;
+        if (!encode_entry(in, *ctx.drip, ctx.open_flag, encoded, seg, info, err)) return false;
         seg.offset = cursor;
 
         Xp3Entry e;
         e.info_flags = in.info_flags;
-        e.original_size = in.plaintext.size();
+        e.original_size = info.original_size;
         e.archived_size = encoded.size();
         e.name = in.index_name;
-        e.adler = crypto::adler32(in.plaintext.data(), in.plaintext.size());
+        e.adler = info.adler;
         e.segments = in.segments_override.empty()
                          ? std::vector<Xp3Segment>{seg}
                          : in.segments_override;
         index_entries.push_back(std::move(e));
 
-        data.insert(data.end(), encoded.begin(), encoded.end());
+        if (!sink.Write(encoded.data(), encoded.size())) {
+            err = "写入失败";
+            return false;
+        }
         cursor += encoded.size();
+        if (info.rescrambled) ++rescrambled;
 
         MappingRecord rec;
         rec.domain_hash_bytes = in.domain_hash;
@@ -125,7 +301,10 @@ std::vector<uint8_t> pack_archive(const std::vector<PackEntry>& entries, const P
     std::vector<uint8_t> mapping_plain;
     put32(mapping_plain, static_cast<uint32_t>(tjs.size()));
     const std::vector<uint8_t> tjs_z = deflate(tjs);
-    if (tjs_z.empty() && !tjs.empty()) return {};
+    if (tjs_z.empty() && !tjs.empty()) {
+        err = "映射表压缩失败";
+        return false;
+    }
     mapping_plain.insert(mapping_plain.end(), tjs_z.begin(), tjs_z.end());
 
     const uint64_t payload_offset = cursor;
@@ -133,7 +312,15 @@ std::vector<uint8_t> pack_archive(const std::vector<PackEntry>& entries, const P
         ctx.open_flag == 0 ? ctx.index_keys.nonce0 : ctx.index_keys.nonce1;
     const std::vector<uint8_t> payload = crypto::xchacha20poly1305_seal(
         ctx.index_keys.root_key, nonce, mapping_plain.data(), mapping_plain.size());
-    if (payload.size() != mapping_plain.size() + 16) return {};
+    if (payload.size() != mapping_plain.size() + 16) {
+        err = "索引负载加密失败";
+        return false;
+    }
+    if (!sink.Write(payload.data(), payload.size())) {
+        err = "写入失败";
+        return false;
+    }
+    cursor += payload.size();
 
     // ---- 3. 索引 ----
     Hxv4Descriptor desc;
@@ -143,25 +330,40 @@ std::vector<uint8_t> pack_archive(const std::vector<PackEntry>& entries, const P
 
     const std::vector<uint8_t> tree = build_index_tree(desc, index_entries);
     const std::vector<uint8_t> index_blob = deflate(tree);
-    if (index_blob.empty() && !tree.empty()) return {};
+    if (index_blob.empty() && !tree.empty()) {
+        err = "索引压缩失败";
+        return false;
+    }
 
-    // ---- 4. 拼装 ----
-    std::vector<uint8_t> out;
-    out.reserve(40 + data.size() + payload.size() + 17 + index_blob.size());
-    out.insert(out.end(), kXp3Magic, kXp3Magic + sizeof(kXp3Magic));
-    put64(out, 0x17);  // 诱饵
-    put32(out, 1);
-    out.push_back(0x80);
-    put64(out, 0);
-    const uint64_t index_offset = payload_offset + payload.size();
-    put64(out, index_offset);
-    out.insert(out.end(), data.begin(), data.end());
-    out.insert(out.end(), payload.begin(), payload.end());
-    out.push_back(1);  // 索引压缩标志
-    put64(out, index_blob.size());
-    put64(out, tree.size());
-    out.insert(out.end(), index_blob.begin(), index_blob.end());
-    return out;
+    std::vector<uint8_t> tail;
+    tail.push_back(1);  // 索引压缩标志
+    put64(tail, index_blob.size());
+    put64(tail, tree.size());
+    tail.insert(tail.end(), index_blob.begin(), index_blob.end());
+    if (!sink.Write(tail.data(), tail.size())) {
+        err = "写入失败";
+        return false;
+    }
+
+    // ---- 4. 回填 index_offset（头部 0x20）----
+    std::vector<uint8_t> patch;
+    put64(patch, payload_offset + payload.size());
+    if (!sink.Patch(0x20, patch.data(), patch.size())) {
+        err = "写入失败";
+        return false;
+    }
+
+    stats.rescrambled = rescrambled;
+    stats.bytes = sink.Tell();
+    return true;
+}
+
+std::vector<uint8_t> pack_archive(const std::vector<PackEntry>& entries, const PackContext& ctx) {
+    MemorySink sink;
+    PackStats stats;
+    std::string err;
+    if (!pack_archive_stream(entries, ctx, sink, stats, err)) return {};
+    return sink.TakeBytes();
 }
 
 bool rebuild_archive(const uint8_t* data, size_t len, const Hxv4Keys& keys, const DripProgram& drip,

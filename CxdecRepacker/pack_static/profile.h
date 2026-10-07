@@ -2,6 +2,7 @@
 
 #include "core/archive.h"
 #include "core/drip.h"
+#include "core/resource_hash.h"
 
 #include <array>
 #include <cstdint>
@@ -17,6 +18,12 @@ struct GameProfile {
     std::string id;
     Hxv4Keys index;                      // 映射表 XChaCha20-Poly1305 材料
     std::array<uint8_t, 32> hash_key{};  // 派生产物里带着的 hash_key
+
+    // pathHash / fileHash 的额外输入串，也就是运行时 CompoundStorageMedia 的
+    // mediaName。**不能写死**：它来自 STARTUP.TJS 的 bootstrapPrefix，每游戏可变
+    //（含冒号取冒号前那段，否则 "xp3hnp"）。派生产物里带着就用它，没有才回落默认。
+    std::string media_name = std::string(kDefaultMediaName);
+
     std::string unique;
     uint64_t archive_seed = 0;
     DripProgram drip;                    // holder_words + context + lanes

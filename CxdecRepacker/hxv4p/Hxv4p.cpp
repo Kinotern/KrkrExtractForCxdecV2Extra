@@ -170,6 +170,15 @@ std::vector<uint8_t> EncodePayload(const Parameters& params, std::string& error)
         AppendChunk(out, kChunkKeyMaterial, body);
     }
 
+    // pathHash / fileHash 的盐（运行时 CompoundStorageMedia 的 mediaName）。
+    // **空串也要写**：盐可以就是空串（prefix 以冒号开头时正是如此），
+    // 而「记了但是空」和「压根没记」必须分得开——否则空盐会被读侧当成默认值，
+    // 整包哈希全错而且不报错。老产物没有这个 chunk，读侧才回落默认值。
+    {
+        std::vector<uint8_t> body(params.hash_domain.begin(), params.hash_domain.end());
+        AppendChunk(out, kChunkHashDomain, body);
+    }
+
     {
         std::vector<uint8_t> body;
         for (size_t i = 0; i < 6; ++i) {
@@ -299,7 +308,9 @@ bool Decode(const std::vector<uint8_t>& blob, Parameters& out, std::string& erro
         uint32_t length = (uint32_t)payload[off + 4] | ((uint32_t)payload[off + 5] << 8) |
                           ((uint32_t)payload[off + 6] << 16) | ((uint32_t)payload[off + 7] << 24);
         off += 8;
-        if (off + length > payload.size()) {
+        // 不能写成 off + length > payload.size()：32 位下 size_t 就是 32 位，
+        // 而 length 是从文件里读的，两者相加会回绕，畸形文件能骗过这个判断。
+        if (length > payload.size() - off) {
             error = "chunk overruns payload";
             return false;
         }
@@ -335,6 +346,12 @@ bool Decode(const std::vector<uint8_t>& blob, Parameters& out, std::string& erro
                 std::memcpy(out.hxv4_nonce0, body + 32, 24);
                 std::memcpy(out.hxv4_nonce1, body + 56, 24);
                 std::memcpy(out.hash_key, body + 80, 32);
+                break;
+            }
+            case kChunkHashDomain: {
+                out.hash_domain.assign(reinterpret_cast<const char*>(body),
+                                       static_cast<size_t>(length));
+                out.hash_domain_known = true;
                 break;
             }
             case kChunkHolderWords: {

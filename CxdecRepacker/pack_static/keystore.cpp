@@ -50,6 +50,10 @@ std::vector<uint8_t> CanonicalBytes(const Hxv4p::Parameters& p, bool use_keyed) 
     // hash_key 只在用 keyed 哈希时才算数（不同派生来源给的它未必一样）
     if (use_keyed) put(p.hash_key, sizeof(p.hash_key));
 
+    // 盐同样是打包真正用到的参数：换盐结果就不同，摘要得跟着变，
+    // 否则「只有盐不同」的两套参数会算出同一个 keys_hash。
+    put(reinterpret_cast<const uint8_t*>(p.hash_domain.data()), p.hash_domain.size());
+
     put32(out, 6);
     for (size_t i = 0; i < 6 && i < p.holder_words.size(); ++i) put32(out, p.holder_words[i]);
 
@@ -222,6 +226,10 @@ bool LoadProfileHxv4p(const std::string& utf8_path, GameProfile& out, std::strin
     std::memcpy(out.index.nonce0.data(), p.hxv4_nonce0, sizeof(p.hxv4_nonce0));
     std::memcpy(out.index.nonce1.data(), p.hxv4_nonce1, sizeof(p.hxv4_nonce1));
     std::memcpy(out.hash_key.data(), p.hash_key, sizeof(p.hash_key));
+
+    // 盐：产物里记了就用它——**哪怕是空串**（盐可以就是空的）；只有压根没记
+    //（早先的产物没有这个 chunk）才回落默认值。
+    out.media_name = p.hash_domain_known ? p.hash_domain : std::string(kDefaultMediaName);
 
     std::vector<std::vector<DripRecord>> lanes;
     lanes.reserve(p.lanes.size());

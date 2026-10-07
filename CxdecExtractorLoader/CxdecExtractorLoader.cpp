@@ -17,6 +17,7 @@
 #include "directory.h"
 #include "encoding.h"
 #include "resource.h"
+#include "TryExport.h"
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(linker, "/MERGE:\".detourd=.data\"")
@@ -967,13 +968,14 @@ namespace
     constexpr int IDC_REPACK_RESCRAMBLE = 3309;
     constexpr int IDC_REPACK_STATUS = 3310;
     constexpr int IDC_REPACK_START = 3311;
+    constexpr int IDC_REPACK_SALT_EDIT = 3312;
     constexpr int IDC_REPACK_HINT_BASE = 3400;
     constexpr int IDC_REPACK_HINT_COUNT = 8;
     constexpr UINT RepackDoneMessage = WM_APP + 1;
 
     typedef int(__stdcall* RepackSniffFn)(const wchar_t*, int*, char*, int, char*, int);
     typedef int(__stdcall* RepackPackFn)(const wchar_t*, const wchar_t*, const wchar_t*, const wchar_t*,
-                                         int, int, char*, int, char*, int);
+                                         const wchar_t*, int, int, char*, int, char*, int);
     typedef unsigned int(__stdcall* RepackNextRevisionFn)(const wchar_t*);
 
     struct RepackerApi
@@ -1038,6 +1040,8 @@ namespace
         std::wstring OutputXp3;
         std::wstring ExePath;
         std::wstring KeysRoot;
+        // 盐（pathHash/fileHash 的额外输入串）。留空就用参数里带的那个。
+        std::wstring MediaName;
         bool Rescramble;
     };
 
@@ -1080,6 +1084,7 @@ namespace
         context->Options.OutputXp3 = GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_OUTPUT_EDIT));
         context->Options.ExePath = GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_EXE_EDIT));
         context->Options.KeysRoot = GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_KEYS_EDIT));
+        context->Options.MediaName = GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_SALT_EDIT));
         context->Options.Rescramble = ::IsDlgButtonChecked(hwnd, IDC_REPACK_RESCRAMBLE) == BST_CHECKED;
         context->Ready = false;
 
@@ -1122,6 +1127,11 @@ namespace
             status += L"\r\n参数仓库：";
             status += context->Options.KeysRoot;
         }
+        // 盐错了不报错也不崩，游戏只是当这个包不存在，所以这里必须露出来
+        status += L"\r\n盐：";
+        status += context->Options.MediaName.empty()
+                      ? std::wstring(L"用参数里带的（一般就是 xp3hnp）")
+                      : context->Options.MediaName;
         return status;
     }
 
@@ -1142,8 +1152,26 @@ namespace
         std::wstring OutputXp3;
         std::wstring ExePath;
         std::wstring KeysRoot;
+        std::wstring MediaName;
         bool Rescramble;
     };
+
+    // 连一个错误串都构造不出来时（内存耗尽）也不能让它再抛一次——
+    // 退化成一条不带消息的完成通知，界面那边对 payload == nullptr 有处理，
+    // 至少别让对话框一直等下去。
+    std::wstring* MakePayloadQuietly(const wchar_t* prefix, const std::string& detail)
+    {
+        try
+        {
+            std::wstring text(prefix);
+            text += ExportGuard::WideFromUtf8(detail);
+            return new std::wstring(std::move(text));
+        }
+        catch (...)
+        {
+            return nullptr;
+        }
+    }
 
     // 打包可能很久，放后台线程跑；结果通过 RepackDoneMessage 回发，
     // 由窗口负责释放那个 string。
@@ -1153,47 +1181,67 @@ namespace
 
         bool ok = false;
         std::wstring message;
+        std::wstring* payload = nullptr;
 
-        std::wstring loadError;
-        const RepackerApi* api = LoadRepackerApi(loadError);
-        if (api == nullptr)
+        // 从 CreateThread 起的线程里漏出去的 C++ 异常会直接送掉整个进程
+        // （terminate -> abort -> __fastfail），宿主连错误框都来不及弹。
+        // 所以连"构造结果、回发消息"都一起兜住：最需要这套兜底的恰恰是内存耗尽，
+        // 而那条路上 new 一个 string 本身就会抛。
+        try
         {
-            message = loadError;
-        }
-        else
-        {
-            // 先嗅探一遍：形态不对就别白打一遍包
-            int mode = -1;
-            char detail[1024]{};
-            char sniffError[2048]{};
-            if (!api->Sniff(job->InputDirectory.c_str(), &mode, detail, sizeof(detail),
-                            sniffError, sizeof(sniffError)))
+            std::wstring loadError;
+            const RepackerApi* api = LoadRepackerApi(loadError);
+            if (api == nullptr)
             {
-                message = L"封包失败：" + AnsiBufferToString(sniffError);
+                message = loadError;
             }
             else
             {
-                char result[4096]{};
-                char packError[2048]{};
-                const wchar_t* exePath = job->ExePath.empty() ? nullptr : job->ExePath.c_str();
-                const wchar_t* keysRoot = job->KeysRoot.empty() ? nullptr : job->KeysRoot.c_str();
-                if (api->Pack(job->InputDirectory.c_str(), job->OutputXp3.c_str(), exePath, keysRoot,
-                              -1, job->Rescramble ? 1 : 0,
-                              result, sizeof(result), packError, sizeof(packError)))
+                // 先嗅探一遍：形态不对就别白打一遍包
+                int mode = -1;
+                char detail[1024]{};
+                char sniffError[2048]{};
+                if (!api->Sniff(job->InputDirectory.c_str(), &mode, detail, sizeof(detail),
+                                sniffError, sizeof(sniffError)))
                 {
-                    ok = true;
-                    message = L"封包完成。\r\n\r\n";
-                    message += AnsiBufferToString(result);
-                    message += L"\r\n\r\n输出：" + job->OutputXp3;
+                    message = L"封包失败：" + AnsiBufferToString(sniffError);
                 }
                 else
                 {
-                    message = L"封包失败：" + AnsiBufferToString(packError);
+                    char result[4096]{};
+                    char packError[2048]{};
+                    const wchar_t* exePath = job->ExePath.empty() ? nullptr : job->ExePath.c_str();
+                    const wchar_t* keysRoot = job->KeysRoot.empty() ? nullptr : job->KeysRoot.c_str();
+                    const wchar_t* mediaName = job->MediaName.empty() ? nullptr : job->MediaName.c_str();
+                    if (api->Pack(job->InputDirectory.c_str(), job->OutputXp3.c_str(), exePath,
+                                  keysRoot, mediaName, -1, job->Rescramble ? 1 : 0, result,
+                                  sizeof(result), packError, sizeof(packError)))
+                    {
+                        ok = true;
+                        message = L"封包完成。\r\n\r\n";
+                        message += AnsiBufferToString(result);
+                        message += L"\r\n\r\n输出：" + job->OutputXp3;
+                    }
+                    else
+                    {
+                        message = L"封包失败：" + AnsiBufferToString(packError);
+                    }
                 }
             }
+
+            payload = new std::wstring(message);
+        }
+        catch (const std::exception& e)
+        {
+            ok = false;
+            payload = MakePayloadQuietly(L"封包时发生内部错误：", e.what());
+        }
+        catch (...)
+        {
+            ok = false;
+            payload = MakePayloadQuietly(L"封包时发生内部错误：", "未知异常");
         }
 
-        std::wstring* payload = new std::wstring(message);
         if (::PostMessageW(job->Owner, RepackDoneMessage, ok ? 1u : 0u, (LPARAM)payload) == FALSE)
         {
             delete payload;
@@ -1289,21 +1337,31 @@ namespace
                 MakeBrowse(192, IDC_REPACK_KEYS_BROWSE);
                 MakeHint(223, 3, L"留空表示用封包模块默认的 keys 目录；参数按 EXE 内容摘要存放，可以跨游戏共用");
 
+                // 盐：一般不填。派生的那套不对（非默认 mediaName 的游戏）时才手动指定。
+                // 它不是完整的一步，所以不占 StepLabels，跟下面的勾选框一样用普通字号。
+                CreateWindowW(L"STATIC", L"盐 / mediaName（可留空）", WS_CHILD | WS_VISIBLE | SS_LEFT,
+                              16, 252, 200, 20, hwnd, nullptr, nullptr, nullptr);
+                MakeEdit(kEditX, 249, 240, IDC_REPACK_SALT_EDIT);
+                CreateWindowW(L"STATIC", L"留空就用参数里带的（一般就是 xp3hnp）", WS_CHILD | WS_VISIBLE | SS_LEFT,
+                              kEditX + 252, 252, 380, 17, hwnd,
+                              (HMENU)(INT_PTR)(IDC_REPACK_HINT_BASE + 5), nullptr, nullptr);
+
                 CreateWindowW(L"BUTTON", L"把干净文本重新加扰（补丁包通常要勾）", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                              kEditX, 250, kEditW, 22, hwnd, (HMENU)(INT_PTR)IDC_REPACK_RESCRAMBLE, nullptr, nullptr);
-                MakeHint(275, 4, L"只对 FF FE 开头的干净文本生效，其它文件原样打进去");
+                              kEditX, 300, kEditW, 22, hwnd, (HMENU)(INT_PTR)IDC_REPACK_RESCRAMBLE, nullptr, nullptr);
+                MakeHint(325, 4, L"只对 FF FE 开头的干净文本生效，其它文件原样打进去");
 
                 CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_LEFT,
-                              16, 302, 832, 96, hwnd, (HMENU)(INT_PTR)IDC_REPACK_STATUS, nullptr, nullptr);
+                              16, 352, 832, 96, hwnd, (HMENU)(INT_PTR)IDC_REPACK_STATUS, nullptr, nullptr);
                 CreateWindowW(L"BUTTON", L"开始封包", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-                              650, 406, 110, 32, hwnd, (HMENU)(INT_PTR)IDC_REPACK_START, nullptr, nullptr);
+                              650, 456, 110, 32, hwnd, (HMENU)(INT_PTR)IDC_REPACK_START, nullptr, nullptr);
                 CreateWindowW(L"BUTTON", L"取消", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                              768, 406, 90, 32, hwnd, (HMENU)IDCANCEL, nullptr, nullptr);
+                              768, 456, 90, 32, hwnd, (HMENU)IDCANCEL, nullptr, nullptr);
 
                 ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_INPUT_EDIT), context->Options.InputDirectory.c_str());
                 ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_EXE_EDIT), context->Options.ExePath.c_str());
                 ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_OUTPUT_EDIT), context->Options.OutputXp3.c_str());
                 ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_KEYS_EDIT), context->Options.KeysRoot.c_str());
+                ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_SALT_EDIT), context->Options.MediaName.c_str());
                 ::CheckDlgButton(hwnd, IDC_REPACK_RESCRAMBLE, context->Options.Rescramble ? BST_CHECKED : BST_UNCHECKED);
 
                 ::SendMessageW(hwnd, WM_SETFONT, (WPARAM)context->Font, TRUE);
@@ -1409,6 +1467,7 @@ namespace
                     case IDC_REPACK_EXE_EDIT:
                     case IDC_REPACK_OUTPUT_EDIT:
                     case IDC_REPACK_KEYS_EDIT:
+                    case IDC_REPACK_SALT_EDIT:
                         // 只认失焦：刷新要扫一遍目录，不能跟着每次按键跑
                         if (HIWORD(wParam) == EN_KILLFOCUS)
                         {
@@ -1444,6 +1503,7 @@ namespace
                         job->OutputXp3 = context->Options.OutputXp3;
                         job->ExePath = context->Options.ExePath;
                         job->KeysRoot = context->Options.KeysRoot;
+                        job->MediaName = context->Options.MediaName;
                         job->Rescramble = context->Options.Rescramble;
 
                         DWORD threadId = 0u;
@@ -1532,14 +1592,23 @@ namespace
         windowClass.lpszClassName = RepackDialogClassName;
         ::RegisterClassExW(&windowClass);
 
+        // 控件坐标是**客户区**坐标系，而 CreateWindowExW 收的是窗口尺寸。
+        // 非客户区高度随主题 / DPI / 标题栏字体变，本机实测竖向就要吃掉 39px
+        //（SM_CYCAPTION 23 + 边框 16），所以不能拿固定值去凑——按需要的客户区反推。
+        const int kRepackClientWidth = 880;
+        const int kRepackClientHeight = 504;  // 最下面那排按钮底边 488 + 余量
+        RECT windowRect = {0, 0, kRepackClientWidth, kRepackClientHeight};
+        ::AdjustWindowRectEx(&windowRect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, FALSE,
+                             WS_EX_DLGMODALFRAME);
+
         HWND hwnd = ::CreateWindowExW(WS_EX_DLGMODALFRAME,
                                       RepackDialogClassName,
                                       L"Cxdec 封包（目录 → XP3）",
                                       WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
                                       CW_USEDEFAULT,
                                       CW_USEDEFAULT,
-                                      880,
-                                      480,
+                                      windowRect.right - windowRect.left,
+                                      windowRect.bottom - windowRect.top,
                                       owner,
                                       nullptr,
                                       windowClass.hInstance,
@@ -1698,6 +1767,22 @@ namespace
 
         auto D = (bool(*)(const wchar_t*))::GetProcAddress(hUnp, "CxdecPeUnpacker_Detect");
         auto P = (bool(*)(const wchar_t*, const wchar_t*))::GetProcAddress(hUnp, "CxdecPeUnpacker_Process");
+        auto lastErr = (const wchar_t * (*)())::GetProcAddress(hUnp, "CxdecPeUnpacker_LastError");
+
+        // 那个模块的失败原因以前只写进它自己的静态串、没人读，等于报不出来。
+        // 返回 false 多半是「本来就没壳」这种正常情况，所以只在真有原因时才记一行。
+        auto LogLastError = [&](const wchar_t* prefix)
+        {
+            if (lastErr == nullptr)
+            {
+                return;
+            }
+            const wchar_t* why = lastErr();
+            if (why != nullptr && *why != L'\0')
+            {
+                LoaderLog(FormatString(L"%s%s", prefix, why).c_str());
+            }
+        };
 
         LoaderLog(L"[Loader] Checking SteamStub...");
         const bool packed = (D && P && D(exePath.c_str()));
@@ -1706,6 +1791,7 @@ namespace
         {
             // 已经脱过壳（或本来就没壳）的 exe 也要继续走后面的「注入 + 打补丁」：
             // 反篡改校验跟壳没有关系，不补一样会在启动的最后一步撞上。
+            LogLastError(L"[Loader] detect: ");
             LoaderLog(L"[Loader] Not packed - will still inject and patch");
         }
         else
@@ -1768,6 +1854,7 @@ namespace
             if (!P(exePath.c_str(), unpacked.c_str()))
             {
                 LoaderLog(L"[Loader] FAIL: unpack");
+                LogLastError(L"[Loader] unpack: ");
                 ::FreeLibrary(hUnp);
                 return true;
             }

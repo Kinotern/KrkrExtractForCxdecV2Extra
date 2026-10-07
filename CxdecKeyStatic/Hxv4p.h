@@ -23,6 +23,7 @@ constexpr uint16_t kChunkTable       = 0x0004;
 constexpr uint16_t kChunkLanes       = 0x0005;
 constexpr uint16_t kChunkParams      = 0x0006;
 constexpr uint16_t kChunkBootstrap   = 0x0007;
+constexpr uint16_t kChunkHashDomain  = 0x0008;
 
 constexpr size_t kTableMin = 1024;
 constexpr uint32_t kVaLowerBound = 0x1000000;
@@ -50,6 +51,13 @@ struct Parameters {
     uint8_t hxv4_nonce0[24] = {};
     uint8_t hxv4_nonce1[24] = {};
     uint8_t hash_key[32] = {};
+
+    // pathHash / fileHash 的盐，也就是运行时 CompoundStorageMedia 的 mediaName
+    //（STARTUP.TJS 里 bootstrapPrefix 含冒号时取冒号前那段，否则用默认值）。
+    // UTF-8。空串是**合法值**（盐可以就是空串），所以另配一个 hash_domain_known
+    // 区分「记了但是空」和「压根没记」——只有后者才该回落默认值。
+    std::string hash_domain;
+    bool hash_domain_known = false;
 
     std::vector<uint32_t> holder_words;
     std::vector<uint32_t> context_u32;

@@ -32,6 +32,17 @@ static void EnsureOutputDirectory(const std::wstring& path) {
     }
 }
 
+// 盐：pathHash/fileHash 的额外输入串，也就是运行时 CompoundStorageMedia 的 mediaName。
+// STARTUP.TJS 里就是这么来的：
+//     var parts = (string(bootstrapPrefix)).split(":");
+//     var mediaName = (parts.count > 1) ? parts[0] : "xp3hnp";
+// 冒号是 ASCII，prefix 又是 UTF-8，按字节找就行。
+static std::string media_name_from_prefix(const std::string& prefix_utf8) {
+    const size_t colon = prefix_utf8.find(':');
+    if (colon == std::string::npos) return "xp3hnp";
+    return prefix_utf8.substr(0, colon);
+}
+
 // --- 自动检测salt候选 ---
 
 static std::vector<size_t> find_salt_candidates(const uint8_t* data, size_t size,
@@ -357,6 +368,10 @@ bool recover_drip_program(const std::wstring& exe_path,
     std::wstring final_bootstrap = utf8_to_wide(prefix_utf8);
     final_bootstrap += bscfg.warning;
 
+    // 10. 盐：pathHash/fileHash 的额外输入串，由上面那个 bootstrapPrefix 推出来。
+    // 它以前是写死空串、没人填的，导致封包侧只能把 "xp3hnp" 硬编码在公式里。
+    const std::string media_name = media_name_from_prefix(prefix_utf8);
+
     // 10. 尝试FilterManager派生（需要正确的per-game RVA）
     auto prog = FilterManager::derive_drip_program(
         bscfg.dll_data.data(), bscfg.dll_data.size(),
@@ -423,6 +438,15 @@ bool recover_drip_program(const std::wstring& exe_path,
         FAIL("FilterManager derivation failed (RVAs may be game-specific). Partial _scheme.json saved.");
     }
 
+    // 派生出 128 条 lane 才算完整 —— DripProgram::valid() 和封包侧的
+    // ImportProfileHxv4p 都是这么判的。少了的话封包时会被当成"派生失败"而静默
+    // 回落内置参数，所以这里当场报错，别在磁盘上留一份看着正常、其实不能用的产物。
+    if (prog.lanes.size() != 128) {
+        FAIL("Derived drip program is incomplete: got " + std::to_string(prog.lanes.size()) +
+             " lanes, expected 128. Nothing was written. Please retry; if it keeps happening, "
+             "check the lane extraction in FilterManager.");
+    }
+
     
     
     // 11. 确定EXE stem用于文件命名
@@ -483,7 +507,7 @@ bool recover_drip_program(const std::wstring& exe_path,
         fprintf(fs, "    \"archive_unique_key\": \"%s\"\n", unique_utf8.c_str());
         fprintf(fs, "  },\n");
         fprintf(fs, "  \"hxv4\": {\n");
-        fprintf(fs, "    \"hash_domain\": \"\",\n");
+        fprintf(fs, "    \"hash_domain\": \"%s\",\n", media_name.c_str());
         fprintf(fs, "    \"key\": \"");
         write_hex(fs, prog.hxv4_key.data(), 32);
         fprintf(fs, "\",\n");
@@ -600,6 +624,7 @@ bool recover_drip_program(const std::wstring& exe_path,
         std::memcpy(hp.hxv4_nonce0, prog.hxv4_nonce0.data(), sizeof(hp.hxv4_nonce0));
         std::memcpy(hp.hxv4_nonce1, prog.hxv4_nonce1.data(), sizeof(hp.hxv4_nonce1));
         std::memcpy(hp.hash_key, prog.hash_key.data(), sizeof(hp.hash_key));
+        hp.hash_domain = media_name;
         hp.holder_words.assign(prog.holder_words.begin(), prog.holder_words.end());
         hp.context_u32 = prog.context_u32;
         for (const auto& lane : prog.lanes) {

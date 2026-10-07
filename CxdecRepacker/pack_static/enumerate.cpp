@@ -1,13 +1,11 @@
 #include "pack_static/enumerate.h"
 
 #include "core/resource_hash.h"
-#include "core/text_scramble.h"
 #include "params/cafestella.h"
 
 #include <algorithm>
 #include <array>
 #include <filesystem>
-#include <fstream>
 
 namespace hxv4::pack_static {
 namespace {
@@ -38,32 +36,19 @@ void parse_hex_into(const std::string& hex, uint8_t* out, size_t out_len) {
     }
 }
 
-// 32 位哈希按大端写进 8 字节域字段
+// 域哈希按**大端**写进 8 字节域字段。
+// CafeStella 实测：根域算得 0x94D4A97C61498621，索引里存的正是 94 D4 A9 7C …
 std::array<uint8_t, 8> domain_bytes(uint64_t value) {
     std::array<uint8_t, 8> b{};
     for (int i = 0; i < 8; ++i) b[i] = static_cast<uint8_t>(value >> (8 * (7 - i)));
     return b;
 }
 
-bool read_file(const fs::path& path, std::vector<uint8_t>& out) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) return false;
-    f.seekg(0, std::ios::end);
-    const std::streamoff n = f.tellg();
-    f.seekg(0, std::ios::beg);
-    out.assign(static_cast<size_t>(n > 0 ? n : 0), 0);
-    if (!out.empty()) f.read(reinterpret_cast<char*>(out.data()), n);
-    return static_cast<bool>(f) || f.eof();
-}
-
-bool maybe_rescramble(std::vector<uint8_t>& bytes) {
-    std::vector<uint8_t> scrambled;
-    if (!scramble_text(bytes.data(), bytes.size(), scrambled)) return false;
-    bytes = std::move(scrambled);
-    return true;
-}
-
 // 条目 0 的警告占位图。它全工具一致，与游戏无关。
+//
+// 它的 file_hash 用的是**抄下来的常量**，只对这套盐（"xp3hnp"）成立——
+// 占位图的逻辑名我们不知道，没法按盐重算。换了盐这条会不准，
+// 但游戏从来不读条目 0，所以只是复刻比对时的一个已知差异。
 PackEntry make_placeholder(const std::array<uint8_t, 8>& domain) {
     PackEntry e0;
     e0.domain_hash = domain;
@@ -77,8 +62,10 @@ PackEntry make_placeholder(const std::array<uint8_t, 8>& domain) {
 }
 
 Hash32 hash_for_name(const GameProfile& profile, const std::u16string& name) {
-    if (profile.use_keyed_hash) return file_hash_keyed(name, profile.hash_key.data());
-    return file_hash(name);
+    if (profile.use_keyed_hash) {
+        return file_hash_keyed(name, profile.hash_key.data(), profile.media_name);
+    }
+    return file_hash(name, profile.media_name);
 }
 
 }  // namespace
@@ -101,13 +88,17 @@ bool enumerate_directory(const std::string& utf8_dir, InputMode mode, const Game
         return false;
     }
 
-    const auto root_domain = domain_bytes(domain_hash(u""));
+    const auto root_domain = domain_bytes(domain_hash(u"", profile.media_name));
     out.push_back(make_placeholder(root_domain));
 
     if (mode == InputMode::Patch) {
         std::vector<fs::path> files;
         for (const auto& e : fs::directory_iterator(dir, ec)) {
-            if (e.is_regular_file()) files.push_back(e.path());
+            if (!e.is_regular_file()) continue;
+            // 解包器留下的 .alst 清单不是资源。嗅探那边也是这么跳过的——
+            // 两边判断必须一致，否则报告说「忽略 N 个」，包却照样多打进去。
+            if (is_manifest_file(e.path().filename().u8string())) continue;
+            files.push_back(e.path());
         }
         if (files.empty()) {
             err = "目录里没有文件";
@@ -121,11 +112,8 @@ bool enumerate_directory(const std::string& utf8_dir, InputMode mode, const Game
             e.index_name = f.filename().u16string();
             e.file_hash = hash_for_name(profile, e.index_name);
             e.key = hx_per_file_key(stats.files + 1);
-            if (!read_file(f, e.plaintext)) {
-                err = "读不到 " + f.u8string();
-                return false;
-            }
-            if (rescramble && maybe_rescramble(e.plaintext)) ++stats.rescrambled;
+            e.source_path = f.u8string();
+            e.rescramble = rescramble;
             ++stats.files;
             out.push_back(std::move(e));
         }
@@ -145,6 +133,7 @@ bool enumerate_directory(const std::string& utf8_dir, InputMode mode, const Game
             parse_hex_into(e.path().filename().string(), domain.data(), domain.size());
             for (const auto& f : fs::directory_iterator(e.path(), ec)) {
                 if (!f.is_regular_file()) continue;
+                if (is_manifest_file(f.path().filename().u8string())) continue;  // 清单不是资源
                 Item it;
                 it.domain = domain;
                 parse_hex_into(f.path().filename().string(), it.file_hash.data(),
@@ -153,6 +142,7 @@ bool enumerate_directory(const std::string& utf8_dir, InputMode mode, const Game
                 items.push_back(std::move(it));
             }
         } else if (e.is_regular_file()) {
+            if (is_manifest_file(e.path().filename().u8string())) continue;  // 清单不是资源
             Item it;
             it.domain = root_domain;
             parse_hex_into(e.path().filename().string(), it.file_hash.data(), it.file_hash.size());
@@ -176,11 +166,8 @@ bool enumerate_directory(const std::string& utf8_dir, InputMode mode, const Game
         e.file_hash = it.file_hash;
         e.key = hx_per_file_key(stats.files + 1);
         e.index_name = std::u16string(1, static_cast<char16_t>(0x5000 + (stats.files + 1)));
-        if (!read_file(it.path, e.plaintext)) {
-            err = "读不到 " + it.path.u8string();
-            return false;
-        }
-        if (rescramble && maybe_rescramble(e.plaintext)) ++stats.rescrambled;
+        e.source_path = it.path.u8string();
+        e.rescramble = rescramble;
         ++stats.files;
         out.push_back(std::move(e));
     }

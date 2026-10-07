@@ -3,15 +3,35 @@
 #include "crypto/blake2s.h"
 #include "crypto/siphash.h"
 
+#include <windows.h>
+
 #include <string>
 #include <vector>
 
 namespace hxv4 {
 namespace {
 
-std::u16string with_media(std::u16string_view base) {
+// 盐是从 JSON / .hxv4p 里读出来的 UTF-8，公式要的是 UTF-16LE
+std::u16string utf8_to_utf16(std::string_view utf8) {
+    if (utf8.empty()) return std::u16string();
+
+    const int n = ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()),
+                                        nullptr, 0);
+    if (n <= 0) return std::u16string();
+
+    std::wstring wide(static_cast<size_t>(n), L'\0');
+    ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), &wide[0], n);
+
+    std::u16string out;
+    out.reserve(wide.size());
+    for (const wchar_t c : wide) out.push_back(static_cast<char16_t>(c));
+    return out;
+}
+
+// 盐留空就是不加——运行时那边「mediaName 为空则不传」是同一个意思
+std::u16string with_media(std::u16string_view base, std::string_view media_name) {
     std::u16string out(base);
-    for (const char c : kMediaName) out.push_back(static_cast<char16_t>(c));
+    out += utf8_to_utf16(media_name);
     return out;
 }
 
@@ -34,16 +54,17 @@ uint64_t bswap64(uint64_t v) {
 
 }  // namespace
 
-Hash32 file_hash(std::u16string_view name) {
-    const std::u16string msg = with_media(name);
+Hash32 file_hash(std::u16string_view name, std::string_view media_name) {
+    const std::u16string msg = with_media(name, media_name);
     const std::vector<uint8_t> bytes = to_utf16le_bytes(msg);
     Hash32 out{};
     crypto::blake2s256(bytes.data(), bytes.size(), out.data());
     return out;
 }
 
-Hash32 file_hash_keyed(std::u16string_view name, const uint8_t key[32]) {
-    const std::u16string msg = with_media(name);
+Hash32 file_hash_keyed(std::u16string_view name, const uint8_t key[32],
+                       std::string_view media_name) {
+    const std::u16string msg = with_media(name, media_name);
     const std::vector<uint8_t> bytes = to_utf16le_bytes(msg);
     crypto::Blake2s b(32, key, 32);
     b.update(bytes.data(), bytes.size());
@@ -52,9 +73,10 @@ Hash32 file_hash_keyed(std::u16string_view name, const uint8_t key[32]) {
     return out;
 }
 
-uint64_t domain_hash(std::u16string_view path) {
+uint64_t domain_hash(std::u16string_view path, std::string_view media_name) {
     const bool is_root = path.empty() || path == u"/";
-    const std::u16string msg = with_media(is_root ? std::u16string_view() : path);
+    const std::u16string msg =
+        with_media(is_root ? std::u16string_view() : path, media_name);
     const std::vector<uint8_t> bytes = to_utf16le_bytes(msg);
     const uint8_t zero_key[16] = {};
     return bswap64(crypto::siphash24(bytes.data(), bytes.size(), zero_key));

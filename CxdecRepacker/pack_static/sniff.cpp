@@ -18,18 +18,22 @@ bool is_hex_name(const std::string& s, size_t n) {
 }
 
 // 解包器留下的清单，不是资源
-bool is_manifest(const fs::path& p) {
-    std::string ext = p.extension().string();
-    for (char& c : ext) {
-        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-    }
-    return ext == ".alst";
-}
+bool is_manifest(const fs::path& p) { return is_manifest_file(p.filename().u8string()); }
 
 // 统一走 UTF-8：路径名要拼进给人看的消息里，用 .string() 会混进 ANSI 变成乱码
 std::string name_of(const fs::path& p) { return p.filename().u8string(); }
 
 }  // namespace
+
+bool is_manifest_file(const std::string& utf8_name) {
+    const size_t dot = utf8_name.rfind('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = utf8_name.substr(dot);
+    for (char& c : ext) {
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    }
+    return ext == ".alst";
+}
 
 const char* mode_name(InputMode mode) {
     switch (mode) {

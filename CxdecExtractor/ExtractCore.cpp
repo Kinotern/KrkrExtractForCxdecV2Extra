@@ -174,15 +174,22 @@ namespace Engine
             bool currentSucceeded = false;
             if (IStream* stream = this->CreateStream(entry, tjsXp3PackagePath))
             {
-                // 当前 .alst 仍然输出 hash->hash 形式，后续如有映射表可离线替换。
-                fileTable.WriteUnicode(L"%s%s%s%s%s%s%s\r\n",
+                // .alst 记的是「域哈希 / 文件哈希」，末尾再加上这条记录的 Key。
+                //
+                // 为什么要记 Key：重封包时每个文件的过滤器密钥是打包方自由挑的，原包用的
+                // 那把只存在于包里。不写下来，重封包即使顺序和明文都对上了，密文也会因为
+                // 密钥不同而整片不同，永远复刻不了原包的字节。Key 在 CreateStream 里本来
+                // 就要用，顺手记一条没有任何额外成本。
+                fileTable.WriteUnicode(L"%s%s%s%s%s%s%s%s%016llX\r\n",
                                        dirHash.c_str(),
                                        ExtractCore::Split,
                                        dirHash.c_str(),
                                        ExtractCore::Split,
                                        fileNameHash.c_str(),
                                        ExtractCore::Split,
-                                       fileNameHash.c_str());
+                                       fileNameHash.c_str(),
+                                       ExtractCore::Split,
+                                       static_cast<unsigned long long>(entry.Key));
 
                 currentSucceeded = this->ExtractFile(stream, arcOutputPath, relativePath);
                 stream->Release();

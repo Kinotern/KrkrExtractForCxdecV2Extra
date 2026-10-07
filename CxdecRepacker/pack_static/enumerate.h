@@ -12,6 +12,13 @@ namespace hxv4::pack_static {
 
 struct EnumerateStats {
     uint32_t files = 0;  // 参与打包的资源文件数（不含占位条目）
+
+    // 是否按解包器留下的 .alst 清单还原了**原包的条目顺序**。
+    //
+    // 为什么这件事重要：原包每条记录的 filter_flag 低 16 位就是条目序号，而每个
+    // 文件的过滤器密钥又是按序号发的——顺序变了，密钥跟着变，整包的密文就全不同。
+    // 有清单时才能与原件对上；false 表示退回按 file_hash 排，那只是"能用"。
+    bool ordered_by_manifest = false;
 };
 
 // 按形态把目录枚举成 PackEntry（含条目 0 的占位图）。失败时 err 写明原因。

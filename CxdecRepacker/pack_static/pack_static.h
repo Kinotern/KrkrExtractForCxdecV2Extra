@@ -42,6 +42,9 @@ struct PackReport {
     // 这次**实际用到**的盐。写进报告是因为盐错了完全看不出来（不报错、不崩，
     // 游戏只是当这个包不存在），至少让界面能把它显示出来。
     std::string media_name;
+    // 条目顺序是否按解包器留下的 .alst 清单还原的。
+    // false = 按 file_hash 排的，只是"能用"，结果不会与原件逐字节一致。
+    bool ordered_by_manifest = false;
     bool derived = false;        // 这次是不是现场派生出来的
     std::string derive_note;     // 派生的结果或失败原因
     std::string detail;  // 嗅探给的一句话

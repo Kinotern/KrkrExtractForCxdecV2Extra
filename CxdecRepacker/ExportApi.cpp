@@ -113,6 +113,9 @@ extern "C" BOOL __stdcall Repack(const wchar_t* inputDir, const wchar_t* outputX
             d += "，盐=\"";
             d += r.media_name;
             d += "\"";
+            // 顺序决定重封包能不能和原件对上，同样得说清
+            d += r.ordered_by_manifest ? "，条目顺序按解包清单还原"
+                                       : "，条目顺序按哈希排（没有解包清单，与原件不会逐字节一致）";
             if (!r.derive_note.empty()) {
                 d += "；";
                 d += r.derive_note;

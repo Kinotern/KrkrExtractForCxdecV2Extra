@@ -139,6 +139,7 @@ PackReport pack_static(const std::string& utf8_dir, const std::string& utf8_out,
     r.files = stats.files;
     r.rescrambled = pack_stats.rescrambled;
     r.bytes = pack_stats.bytes;
+    r.ordered_by_manifest = stats.ordered_by_manifest;
     return r;
 }
 

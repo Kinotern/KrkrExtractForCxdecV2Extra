@@ -186,12 +186,18 @@ DripProgram derive_drip_program(
                 prog.context_u32[i] = *(uint32_t*)(ctx_start + i * 4);
 
             // 提取lanes（128条lane，每条0x10字节，起始于drip_impl + 0x04）
+            //
+            // 别拿 manager 缓冲区当边界：drip_impl 是**另一块分配**，不在 manager 里。
+            // 曾经拿 mgr + MANAGER_SIZE 做上界，只有 drip_impl 恰好落在 manager 下面
+            // 时才碰巧成立——落在上面就第一次循环直接 break，一条 lane 都提不出来
+            // （约三次里出一次），而且不报错。
+            // 上面那句 IsBadReadPtr(drip_impl, 0x810) 已经盖住了 0x800 的整张表，
+            // 这里不需要再判一遍。
             static constexpr int LANE_COUNT = 128;
             static constexpr int LANE_SIZE = 0x10;
             uint8_t* lane_base = drip_impl + 0x04;
             for (int li = 0; li < LANE_COUNT; ++li) {
                 uint8_t* lane = lane_base + li * LANE_SIZE;
-                if ((uint8_t*)lane + LANE_SIZE > mgr + MANAGER_SIZE) break;
                 uint32_t begin   = *(uint32_t*)(lane);
                 uint32_t end     = *(uint32_t*)(lane + 4);
                 // 跳过current和ctx

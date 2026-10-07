@@ -90,7 +90,13 @@ bool read_xp3(const uint8_t* data, size_t len, Xp3Header& header,
     const uint64_t orig_size = load64(p + 9);
     if (header.index_offset + 17 + comp_size > len) return false;
 
-    index_tree.assign(orig_size, 0);
+    // orig_size 是文件里的 64 位字段，直接拿去分配内存前必须先挡一道：
+    // 下面的 size_t / uLongf 都是 32 位，装不下就会截断，畸形文件能让我们
+    // 去申请几个 GB。实测索引树一条记录约 100 字节，64 MB 够几百万条了。
+    constexpr uint64_t kMaxIndexTreeSize = 64ull * 1024 * 1024;
+    if (orig_size > kMaxIndexTreeSize) return false;
+
+    index_tree.assign(static_cast<size_t>(orig_size), 0);
     uLongf dest_len = static_cast<uLongf>(orig_size);
     const int rc =
         uncompress(index_tree.data(), &dest_len, p + 17, static_cast<uLong>(comp_size));
@@ -101,6 +107,9 @@ bool read_xp3(const uint8_t* data, size_t len, Xp3Header& header,
     while (q + 12 <= index_tree.size()) {
         const uint64_t size = load64(index_tree.data() + q + 4);
         if (std::memcmp(index_tree.data() + q, "File", 4) == 0) ++header.file_chunk_count;
+        // 和下面那两处遍历一样，先挡住上界再前进：size 是 64 位字段，窄化到
+        // 32 位的 size_t 会回绕，q 就再也前进不了、循环出不去
+        if (size > index_tree.size() - q - 12) break;
         q += 12 + static_cast<size_t>(size);
     }
     return true;

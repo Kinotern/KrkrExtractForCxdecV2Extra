@@ -68,8 +68,8 @@ LLLJ软电池版本经过测试，软件内置的调试模式，点击弹窗后�
 
 - 解包后的 Hash 目录结构
 - 与封包同名的 `.alst` 文件表
-- `Extractor.log`
-- `ExtractorUI.log`
+
+会话日志（`Extractor.log`、`ExtractorUI.log` 等）统一写在**工具目录下的 `Log\`**，不在游戏目录里，见下文「日志位置」。
 
 ### 2. 运行时恢复 Hash 映射
 
@@ -83,7 +83,6 @@ LLLJ软电池版本经过测试，软件内置的调试模式，点击弹窗后�
 
 - `DirectoryHash.log`
 - `FileNameHash.log`
-- `Universal.log`
 - `HashRestore_RecoveredNames.lst`
 
 日志格式大致为：
@@ -96,7 +95,7 @@ LLLJ软电池版本经过测试，软件内置的调试模式，点击弹窗后�
 
 - `DirectoryHash.log` 用于还原目录名。
 - `FileNameHash.log` 用于还原文件名和后缀。
-- `Universal.log` 记录 Hash Seed、Salt 等辅助信息。
+- `Universal.log`（在工具目录 `Log\` 下）记录 Hash Seed、Salt 等辅助信息。
 - `HashRestore_RecoveredNames.lst` 是跨运行时恢复和 Hook 撞库恢复共享的 `HASH:name` 映射表。
 
 实时恢复窗口中只有一个主操作按钮：
@@ -268,6 +267,43 @@ Loader 会优先从自身目录下的 `CxdecExtractordll\` 子目录加载模块
 5. 查看 `Restored_Extractor_Output`
 6. 查看 `Restored_Extractor_Output\RestoreReport.txt`
 
+## 日志位置
+
+所有会话日志统一写在 **`loader.exe` 所在目录下的 `Log\`**：
+
+```text
+工具目录\Log\
+  CxdecExtractorLoader.log
+  Extractor.log
+  ExtractorUI.log
+  KeyInfo.log
+  Universal.log
+  HashCrack.log
+  RuntimeHashRestore.log
+  HashRestore.log
+  HashRestore_Unresolved.log
+  CxdecAntiMalform.log
+```
+
+- 各功能模块的 DLL 通常在 `CxdecExtractordll\` 下，会自己上跳一级定位到工具目录，所以不管哪个模块写，落点都一样。
+- 工具目录写不了（例如装在 `Program Files` 下）时，退到 `%LOCALAPPDATA%\KrkrExtract\Log\`，最终位置和原因写在日志开头。
+- 编码统一 UTF-8。行格式固定为 `时间 | 级别 | 线程 | 正文`：
+
+  ```text
+  2026-10-08 21:01:09 | E | T51FC | Write Failed: data\5E5F…\41D9… | stage=Open | …
+  ```
+
+  级别是 `I`/`W`/`E`（`D` 为调试，默认不写）。解包是多个线程并行跑的，`T` 后面的线程号能区分"同一个域一直失败"还是"几个线程各失败一次"。日志很大时直接搜 `| E |` 就能只看真正的失败。
+- 会话日志保留上一代（`.1`）：重跑一次不会把上一次的失败现场抹掉。
+- 单个日志的**日志行**有 32 MiB 上限，超过后只留一条提示就不再写（防止日志自己把盘写满）。哈希映射库那类数据写入不受此限。
+
+注意区分**产物**与日志——下面这些虽然也叫 `.log`，但会被后续流程读回去，所以留在各自的输出目录里，不随日志搬家：
+
+- `StringHashDumper_Output\DirectoryHash.log`
+- `StringHashDumper_Output\FileNameHash.log`
+- `Extractor_Output\Extractor_Log\HashRestore_Report.tsv`
+- `StringHashDumper_Output\HashRestore_RecoveredNames.lst`
+
 ## 构建方法
 
 推荐使用 Visual Studio 2022 的开发者命令行：
@@ -287,6 +323,11 @@ Release\
     CxdecStringDumper.dll
     CxdecHashRestore.dll
     CxdecKeyStatic.dll
+    CxdecKeyDumper.dll
+    CxdecRepacker.dll
+    CxdecAntiMalform.dll
+    CxdecPeUnpacker.dll
+    CxdecCli.exe
 ```
 
 也可以直接使用 PowerShell 调用 MSBuild：
@@ -294,6 +335,33 @@ Release\
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe' 'O:\Github\KrkrExtractForCxdecV2Extra\cangku\KrkrExtractForCxdecV2Extra\KrkrZCxdecV2.sln' /p:Configuration=Release /p:Platform=x86 /m
 ```
+
+## 开发调试命令行（CxdecCli.exe）
+
+`CxdecExtractordll\CxdecCli.exe` 是不用点界面的调试入口，把**可以离线跑**的那几件事
+直接走一遍，方便写脚本回归。它按自己的模块目录去找 `CxdecRepacker.dll` /
+`CxdecKeyStatic.dll`，所以**必须和它们放在同一个目录**。退出码：`0` 成功、`1` 失败、`2` 用法错误。
+
+```text
+CxdecCli sniff <目录>                    判定目录形态（模式 1/2/3），不打包
+CxdecCli repack <目录> <输出.xp3> [选项]  目录封成 XP3
+    --exe <游戏.exe>    按这个 EXE 查参数仓库；仓库里没有就现场派生
+    --keys <目录>       参数仓库根目录（默认 <工具目录>\keys）
+    --media-name <盐>   覆盖盐，只在派生的那套不对时才用
+    --mode <1|2|3>      覆盖嗅探结果
+    --rescramble        把干净文本搅回加扰形态
+CxdecCli keys <游戏.exe> [--keys <目录>]  只派生/收编参数，不打包
+CxdecCli importkey <参数文件.hxv4p> [--exe X] [--keys X]
+CxdecCli nextrev <游戏目录>               下一个可用的 patch@r<N> 修订号
+CxdecCli keystatic <游戏.exe> [--out <目录>]  调 CxdecKeyStatic 做静态 Key 提取
+CxdecCli cmp <文件A> <文件B>              逐字节比对，只报首个差异偏移
+```
+
+需要游戏进程才成立的功能（解包、运行时 Hash 映射、Hook 撞库）**不在**这个工具里——那些必须由
+Loader 注入游戏进程执行。
+
+`cmp` 是封包复刻验证的常用手段：同一份输入封两次应当逐字节一致；与原件比对时它会报出首个差异偏移，
+例如 `首个差异：偏移 950（0x3B6）  A=13 B=15`，直接就能定位到出问题的那一段。
 
 ## 已知限制
 

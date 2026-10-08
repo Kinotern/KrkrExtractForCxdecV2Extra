@@ -398,12 +398,14 @@ namespace Engine
         this->mControlBlockPath = Path::Combine(this->mOutputDirectoryPath, KeyCore::ControlBlockFileName);
 
         Directory::Create(this->mOutputDirectoryPath);
-        File::Delete(this->mLogPath);
+
+        // json / 文本 / 控制块是本次派生的**输出**，每次重写没问题；
+        // 日志不一样：留一代，用户重跑一次时上次的失败现场不能跟着丢。
         File::Delete(this->mJsonPath);
         File::Delete(this->mTextPath);
         File::Delete(this->mControlBlockPath);
 
-        this->mLogger.Open(this->mLogPath.c_str());
+        this->mLogger.OpenKeepingPrevious(this->mLogPath.c_str());
         this->mLogger.WriteLine(L"Key dumper output directory: %s", this->mOutputDirectoryPath.c_str());
     }
 

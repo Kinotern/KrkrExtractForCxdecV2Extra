@@ -23,6 +23,12 @@ namespace Log
 
 		void Open(const wchar_t* lpFileName);
 
+		// 打开前把已有的非空文件挪成 <路径>.1（旧的 .1 被覆盖）。
+		//
+		// 解包日志以前是每次运行直接删掉重建：用户"重跑一次看看"，
+		// 上一次的失败现场就没了 —— 而那正是最常见的操作。留一代即可保住现场。
+		void OpenKeepingPrevious(const wchar_t* lpFileName);
+
 		void Close();
 
 		void Flush();

@@ -16,6 +16,7 @@
 #include "util.h"
 #include "directory.h"
 #include "encoding.h"
+#include "log.h"
 #include "resource.h"
 #include "TryExport.h"
 
@@ -1727,17 +1728,77 @@ namespace
 
     // ---------- 目标 EXE 导入 ----------
 
+    // 加载器日志。
+    //
+    // 以前是"每写一行就 _wfopen_s 开一次、ANSI 文本模式、没有时间戳"，而且打开失败
+    // 完全静默 —— 用户报"日志是空的"时分不清是没出事还是压根没写进去。现在改走
+    // Common 的 Log::Logger：UTF-8、带锁、追加、带时间戳，并且能查询打开/写入是否成功。
+    //
+    // 首选 loader 同目录；那里可能只读（装在 Program Files 下），失败就退到
+    // %LOCALAPPDATA%\KrkrExtract\，并把最终位置与失败原因写在日志开头。
+    Log::Logger& LoaderLogger()
+    {
+        static Log::Logger logger;
+        static bool initialized = false;
+
+        if (!initialized)
+        {
+            initialized = true;
+
+            const std::wstring primary =
+                Path::GetDirectoryName(g_LoaderFullPath) + L"\\CxdecExtractorLoader.log";
+            logger.Open(primary.c_str());
+            std::wstring used = primary;
+
+            if (!logger.IsOpen())
+            {
+                const Win32Error::Info openError = logger.LastOpenError();
+
+                wchar_t local[MAX_PATH] = {};
+                if (::SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, local) == S_OK)
+                {
+                    const std::wstring dir = std::wstring(local) + L"\\KrkrExtract";
+                    Win32Error::Info ignored;
+                    Directory::Create(dir, &ignored);
+
+                    const std::wstring alt = dir + L"\\CxdecExtractorLoader.log";
+                    logger.Open(alt.c_str());
+                    if (logger.IsOpen())
+                    {
+                        used = alt;
+                        logger.WriteLine(L"[Loader] 主日志位置不可写，已改用：%s", used.c_str());
+                        logger.WriteLine(L"[Loader] 原因：%s",
+                                         Win32Error::Describe(openError).c_str());
+                    }
+                }
+            }
+
+            if (logger.IsOpen())
+            {
+                logger.WriteLine(L"[Loader] log file: %s", used.c_str());
+            }
+        }
+
+        return logger;
+    }
+
     void LoaderLog(const wchar_t* text)
     {
         ::OutputDebugStringW(text);
-        std::wstring path = Path::GetDirectoryName(g_LoaderFullPath) + L"\\CxdecExtractorLoader.log";
-        FILE* f = nullptr;
-        _wfopen_s(&f, path.c_str(), L"a");
-        if (f)
+
+        if (LoaderLogger().IsOpen())
         {
-            fwprintf(f, L"%s\n", text);
-            fclose(f);
+            LoaderLogger().WriteLine(L"%s", text);
         }
+    }
+
+    // 失败点统一走这个：把 Win32 错误码和路径一起写出来。
+    //
+    // 以前多处只写 "[Loader] FAIL: 某某"，看日志的人无从判断原因（权限？被占用？
+    // 路径不存在？）。**必须在失败那次调用之后立刻调用**，中间不要再插别的 API。
+    void LoaderLogFailure(const wchar_t* what, const std::wstring& path)
+    {
+        LoaderLog(Win32Error::FailureLine(what, path, Win32Error::Capture()).c_str());
     }
 
     // 检测并处理 SteamStub 保护壳。
@@ -1750,10 +1811,11 @@ namespace
         }
 
         std::wstring loaderDir = Path::GetDirectoryName(g_LoaderFullPath) + L"\\";
-        HMODULE hUnp = ::LoadLibraryW((loaderDir + L"CxdecExtractordll\\CxdecPeUnpacker.dll").c_str());
+        const std::wstring unpackerPath = loaderDir + L"CxdecExtractordll\\CxdecPeUnpacker.dll";
+        HMODULE hUnp = ::LoadLibraryW(unpackerPath.c_str());
         if (!hUnp)
         {
-            LoaderLog(L"[Loader] Cannot load CxdecPeUnpacker.dll");
+            LoaderLogFailure(L"LoadLibrary CxdecPeUnpacker.dll", unpackerPath);
             return false;
         }
 
@@ -1819,19 +1881,31 @@ namespace
         {
             if (::GetFileAttributesW(apiBak.c_str()) == INVALID_FILE_ATTRIBUTES)
             {
-                ::MoveFileW(api.c_str(), apiBak.c_str());
-                LoaderLog(L"[Loader] Backed up steam_api.dll -> .bak");
+                if (::MoveFileW(api.c_str(), apiBak.c_str()))
+                {
+                    LoaderLog(L"[Loader] Backed up steam_api.dll -> .bak");
+                }
+                else
+                {
+                    LoaderLogFailure(L"MoveFile 备份 steam_api.dll", api);
+                }
             }
 
             if (!::CopyFileW(crackedApi.c_str(), api.c_str(), FALSE))
             {
+                // 先把错误码抓下来，后面的探测会把它冲掉
+                const Win32Error::Info copyError = Win32Error::Capture();
+
                 // 拷贝失败且新 dll 没到位时，把备份移回来
                 if (::GetFileAttributesW(apiBak.c_str()) != INVALID_FILE_ATTRIBUTES &&
                     ::GetFileAttributesW(api.c_str()) == INVALID_FILE_ATTRIBUTES)
                 {
-                    ::MoveFileW(apiBak.c_str(), api.c_str());
+                    if (!::MoveFileW(apiBak.c_str(), api.c_str()))
+                    {
+                        LoaderLogFailure(L"MoveFile 回滚 steam_api.dll", api);
+                    }
                 }
-                LoaderLog(L"[Loader] FAIL: steam_api.dll replace failed");
+                LoaderLog(Win32Error::FailureLine(L"CopyFile steam_api.dll", api, copyError).c_str());
             }
         }
         else
@@ -1855,10 +1929,17 @@ namespace
         {
             // 没壳：复制工作副本走同一条注入流程，原 exe 全程不动
             LoaderLog(L"[Loader] Copying working copy...");
-            ::DeleteFileW(unpacked.c_str());
+
+            // 上一轮可能留下同名工作副本且仍被占用：删不掉时把原因记下来再拷，
+            // 否则后面 CopyFileW 失败只会报"复制失败"，看不出是卡在删除这一步。
+            if (!::DeleteFileW(unpacked.c_str()) && ::GetLastError() != ERROR_FILE_NOT_FOUND)
+            {
+                LoaderLogFailure(L"DeleteFile 旧工作副本", unpacked);
+            }
+
             if (!::CopyFileW(exePath.c_str(), unpacked.c_str(), FALSE))
             {
-                LoaderLog(L"[Loader] FAIL: copy working copy");
+                LoaderLogFailure(L"CopyFile 工作副本", unpacked);
                 ::FreeLibrary(hUnp);
                 return false;
             }
@@ -1897,13 +1978,13 @@ namespace
                 }
                 else
                 {
-                    LoaderLog(L"[Loader] FAIL: CreateRemoteThread");
+                    LoaderLogFailure(L"CreateRemoteThread 加载注入模块", dll);
                 }
                 ::VirtualFreeEx(pi.hProcess, remote, 0, MEM_RELEASE);
             }
             else
             {
-                LoaderLog(L"[Loader] FAIL: VirtualAllocEx");
+                LoaderLogFailure(L"VirtualAllocEx 分配注入参数", unpacked);
             }
 
             ::ResumeThread(pi.hThread);
@@ -1914,8 +1995,15 @@ namespace
             ::GetExitCodeProcess(pi.hProcess, &exitCode);
             ::CloseHandle(pi.hProcess);
             ::CloseHandle(pi.hThread);
-            ::DeleteFileW(unpacked.c_str());
-            LoaderLog(L"[Loader] Cleaned working copy");
+
+            if (!::DeleteFileW(unpacked.c_str()) && ::GetLastError() != ERROR_FILE_NOT_FOUND)
+            {
+                LoaderLogFailure(L"DeleteFile 清理工作副本", unpacked);
+            }
+            else
+            {
+                LoaderLog(L"[Loader] Cleaned working copy");
+            }
 
             if (exitCode == 2 || exitCode == 3)
             {
@@ -1935,7 +2023,7 @@ namespace
         }
         else
         {
-            LoaderLog(L"[Loader] FAIL: CreateProcess");
+            LoaderLogFailure(L"CreateProcess", unpacked);
         }
 
         ::FreeLibrary(hUnp);

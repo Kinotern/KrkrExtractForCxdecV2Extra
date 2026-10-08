@@ -1011,10 +1011,11 @@ namespace Engine
         LoadUnicodeHashLines(directoryHashLogPath, this->mKnownDirectoryHashLines);
         LoadUnicodeHashLines(fileNameHashLogPath, this->mKnownFileNameHashLines);
 
-        File::Delete(universalLogPath);
+        // 目录/文件 hash 两份是**累积**的（追加去重），只有总日志每次重来；
+        // 总日志留一代，免得用户重跑一次就把上一次的记录抹掉。
         this->mDirectoryHashLogger.Open(directoryHashLogPath.c_str());
         this->mFileNameHashLogger.Open(fileNameHashLogPath.c_str());
-        this->mUniversalLogger.Open(universalLogPath.c_str());
+        this->mUniversalLogger.OpenKeepingPrevious(universalLogPath.c_str());
 
         //写UTF-16LE bom头。追加已有Hash日志时不能在中间再次写BOM。
         {

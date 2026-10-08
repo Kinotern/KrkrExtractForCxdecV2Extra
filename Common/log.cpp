@@ -41,6 +41,24 @@ namespace Log
 		LeaveCriticalSection(&m_Lock);
 	}
 
+	void Logger::OpenKeepingPrevious(const wchar_t* lpFileName)
+	{
+		// 只在"确实有内容"时才挪：空文件挪来挪去没有意义，还会让 .1 看起来像是有历史
+		const DWORD attributes = ::GetFileAttributesW(lpFileName);
+		if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+		{
+			WIN32_FILE_ATTRIBUTE_DATA data{};
+			if (::GetFileAttributesExW(lpFileName, GetFileExInfoStandard, &data) &&
+				data.nFileSizeHigh == 0 && data.nFileSizeLow > 0)
+			{
+				const std::wstring previous = std::wstring(lpFileName) + L".1";
+				::MoveFileExW(lpFileName, previous.c_str(), MOVEFILE_REPLACE_EXISTING);
+			}
+		}
+
+		Open(lpFileName);
+	}
+
 	void Logger::NoteWriteFailure()
 	{
 		// 只记第一次：后面的失败多半是同一个原因，刷屏没有意义

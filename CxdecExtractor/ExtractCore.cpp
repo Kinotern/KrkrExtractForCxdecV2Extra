@@ -68,8 +68,9 @@ namespace Engine
 	{
 		std::wstring path = Path::Combine(directory, ExtractCore::ExtractorLogFileName);
 
-		File::Delete(path);
-		this->mLogger.Open(path.c_str());
+		// 保留上一次的日志（挪成 .1）：用户"再跑一次看看"时，失败现场不会跟着丢。
+		// 以前这里是先 Delete 再 Open，等于每次运行都把上一次的证据抹掉。
+		this->mLogger.OpenKeepingPrevious(path.c_str());
 	}
 
     void ExtractCore::SetProgressCallback(tExtractProgressCallback callback, void* context)

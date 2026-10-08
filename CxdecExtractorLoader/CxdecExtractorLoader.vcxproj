@@ -45,6 +45,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>$(SolutionDir)Debug\</OutDir>
     <LinkIncremental>true</LinkIncremental>
     <ManagedAssembly>false</ManagedAssembly>
     <EmbedManifest>true</EmbedManifest>

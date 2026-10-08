@@ -36,6 +36,13 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v3
 
+      # 产物包名用短哈希（github.sha 是 40 位，默认拿它命名会是一长串数字）
+      - name: Short sha
+        id: sha
+        shell: pwsh
+        run: |
+          "sha=$('${{ github.sha }}'.Substring(0, 8))" >> $env:GITHUB_OUTPUT
+
       - name: Build Release x86
         shell: pwsh
         run: |
@@ -66,7 +73,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: KrkrExtractForCxdecV2-${{ github.sha }}
+          name: KrkrExtractForCxdecV2-${{ steps.sha.outputs.sha }}
           path: Release/**
           if-no-files-found: error
 
@@ -99,6 +106,13 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v3
 
+      # 产物包名用短哈希（github.sha 是 40 位，默认拿它命名会是一长串数字）
+      - name: Short sha
+        id: sha
+        shell: pwsh
+        run: |
+          "sha=$('${{ github.sha }}'.Substring(0, 8))" >> $env:GITHUB_OUTPUT
+
       - name: Build Debug x86
         shell: pwsh
         run: |
@@ -122,6 +136,6 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: KrkrExtractForCxdecV2-${{ github.sha }}-debug
+          name: KrkrExtractForCxdecV2-${{ steps.sha.outputs.sha }}-debug
           path: Debug/**
           if-no-files-found: error

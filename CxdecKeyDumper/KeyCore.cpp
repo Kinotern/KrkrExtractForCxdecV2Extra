@@ -389,15 +389,25 @@ namespace Engine
         }
     }
 
+    void KeyCore::SetLogDirectory(const std::wstring& directory)
+    {
+        this->mLogDirectory = directory;
+    }
+
     void KeyCore::SetOutputDirectory(const std::wstring& directory)
     {
         this->mOutputDirectoryPath = Path::Combine(directory, KeyCore::FolderName);
-        this->mLogPath = Path::Combine(this->mOutputDirectoryPath, KeyCore::LogFileName);
+
+        // 没指定统一日志目录就跟着产物走，至少不会没日志。
+        const std::wstring logDirectory =
+            this->mLogDirectory.empty() ? this->mOutputDirectoryPath : this->mLogDirectory;
+        this->mLogPath = Path::Combine(logDirectory, KeyCore::LogFileName);
         this->mJsonPath = Path::Combine(this->mOutputDirectoryPath, KeyCore::JsonFileName);
         this->mTextPath = Path::Combine(this->mOutputDirectoryPath, KeyCore::TextFileName);
         this->mControlBlockPath = Path::Combine(this->mOutputDirectoryPath, KeyCore::ControlBlockFileName);
 
         Directory::Create(this->mOutputDirectoryPath);
+        Directory::Create(logDirectory);
 
         // json / 文本 / 控制块是本次派生的**输出**，每次重写没问题；
         // 日志不一样：留一代，用户重跑一次时上次的失败现场不能跟着丢。
@@ -407,6 +417,7 @@ namespace Engine
 
         this->mLogger.OpenKeepingPrevious(this->mLogPath.c_str());
         this->mLogger.WriteLine(L"Key dumper output directory: %s", this->mOutputDirectoryPath.c_str());
+        this->mLogger.WriteLine(L"Key dumper log file: %s", this->mLogPath.c_str());
     }
 
     void KeyCore::Initialize(HMODULE targetModule, PVOID codeVa, DWORD codeSize)
@@ -426,7 +437,7 @@ namespace Engine
 
         if (!targetModule || !codeVa || codeSize == 0u)
         {
-            this->mLogger.WriteLine(L"Signature scan skipped: invalid module or code section.");
+            this->mLogger.WriteLineLevel(Log::Level::Warn, L"Signature scan skipped: invalid module or code section.");
             this->WriteSnapshot();
             return;
         }
@@ -490,7 +501,7 @@ namespace Engine
 
         if (!address)
         {
-            this->mLogger.WriteLine(L"Probe %u not installed: signature not found or ambiguous.", (unsigned int)type);
+            this->mLogger.WriteLineLevel(Log::Level::Warn, L"Probe %u not installed: signature not found or ambiguous.", (unsigned int)type);
             return false;
         }
 
@@ -501,7 +512,7 @@ namespace Engine
         LONG error = AttachDetour(originalSlot, probe.DetourProc);
         if (error != NO_ERROR)
         {
-            this->mLogger.WriteLine(L"Probe %u not installed: DetourAttach failed with %ld at 0x%08X.",
+            this->mLogger.WriteLineLevel(Log::Level::Error, L"Probe %u not installed: DetourAttach failed with %ld at 0x%08X.",
                                     (unsigned int)type,
                                     error,
                                     (unsigned int)(ULONG_PTR)address);
@@ -535,7 +546,7 @@ namespace Engine
         LONG error = DetachDetour(originalSlot, probe.DetourProc);
         if (error != NO_ERROR)
         {
-            this->mLogger.WriteLine(L"Probe %u detach failed with %ld.", (unsigned int)probe.Type, error);
+            this->mLogger.WriteLineLevel(Log::Level::Error, L"Probe %u detach failed with %ld.", (unsigned int)probe.Type, error);
             return;
         }
 
@@ -552,14 +563,14 @@ namespace Engine
         if (!SafeReadValue((const void*)(frame->Ebp + 0x14u), keyPointer) ||
             !SafeReadValue((const void*)(frame->Ebp + 0x18u), noncePointer))
         {
-            this->mLogger.WriteLine(L"Hx capture failed: cannot read key/nonce pointers.");
+            this->mLogger.WriteLineLevel(Log::Level::Error, L"Hx capture failed: cannot read key/nonce pointers.");
             return false;
         }
 
         if (!SafeReadBytes((const void*)keyPointer, this->mHxKey.data(), this->mHxKey.size()) ||
             !SafeReadBytes((const void*)noncePointer, this->mHxNonce.data(), this->mHxNonce.size()))
         {
-            this->mLogger.WriteLine(L"Hx capture failed: cannot read key/nonce data.");
+            this->mLogger.WriteLineLevel(Log::Level::Error, L"Hx capture failed: cannot read key/nonce data.");
             return false;
         }
 
@@ -574,7 +585,7 @@ namespace Engine
         ULONG_PTR base = frame->Ecx;
         if (base == 0u)
         {
-            this->mLogger.WriteLine(L"Cx capture failed: ECX is null.");
+            this->mLogger.WriteLineLevel(Log::Level::Error, L"Cx capture failed: ECX is null.");
             return false;
         }
 
@@ -588,7 +599,7 @@ namespace Engine
 
         if (!okay)
         {
-            this->mLogger.WriteLine(L"Cx capture failed: cannot read one or more fields.");
+            this->mLogger.WriteLineLevel(Log::Level::Error, L"Cx capture failed: cannot read one or more fields.");
             return false;
         }
 
@@ -607,7 +618,7 @@ namespace Engine
     {
         if (!SafeReadBytes((const void*)(frame->Ebp - 0x74u), this->mVerifyBytes.data(), this->mVerifyBytes.size()))
         {
-            this->mLogger.WriteLine(L"Verify capture failed: cannot read verify bytes.");
+            this->mLogger.WriteLineLevel(Log::Level::Error, L"Verify capture failed: cannot read verify bytes.");
             return false;
         }
 

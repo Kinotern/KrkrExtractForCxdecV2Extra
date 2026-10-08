@@ -24,17 +24,32 @@
   Extractor_Output/
     纯Hash解包结果...
     Extractor_Log/
-      HashRestore.log
-      HashCrack.log
       HashRestore_Report.tsv
-      HashRestore_Unresolved.log
   StringHashDumper_Output/
     DirectoryHash.log
     FileNameHash.log
-    Universal.log
     HashRestore_RecoveredNames.lst
     dirs_2026_06_10_21_49.txt
     files_2026_06_10_21_49.txt
+```
+
+会话日志**不在这里**，统一在工具目录下的 `Log\`：
+
+```text
+工具目录/
+  CxdecExtractorLoader.exe
+  CxdecExtractordll/
+  Log/
+    CxdecExtractorLoader.log
+    Extractor.log
+    ExtractorUI.log
+    KeyInfo.log
+    Universal.log
+    HashCrack.log
+    RuntimeHashRestore.log
+    HashRestore.log
+    HashRestore_Unresolved.log
+    CxdecAntiMalform.log
 ```
 
 ### `Extractor_Output`
@@ -47,13 +62,18 @@ Hash 映射输出目录。运行时恢复、Hook 撞库恢复、补充映射导�
 
 ### `Extractor_Log`
 
-恢复过程日志目录。现在统一优先写在用户选择的纯 Hash 目录下：
+**产物**目录：`HashRestore_Report.tsv` 写在这里，下次加载时会被读回去统计恢复情况，所以它跟着这份解包结果走，不随日志搬家。
 
-```text
-Extractor_Output/Extractor_Log/
-```
+### `Log`
 
-如果 Hook 撞库流程没有拿到纯 Hash 目录环境变量，则退回写到 Hash 输出目录下的 `Extractor_Log`。
+会话日志目录，所有模块写同一处，方便让人把现场发回来。
+
+- 位置是 `<loader.exe 所在目录>\Log\`。各模块自己的 DLL 通常在 `CxdecExtractordll\` 下，会自动上跳一级。
+- 工具目录写不了（例如装在 `Program Files` 下）时退到 `%LOCALAPPDATA%\KrkrExtract\Log\`，并把最终位置和原因写在日志开头。
+- 编码统一 UTF-8，每行带 `YYYY-MM-DD HH:MM:SS` 时间戳。
+- 会话日志保留上一代（`.1`），重跑一次不会把上一次的失败现场抹掉。
+
+`DirectoryHash.log` / `FileNameHash.log` / `HashRestore_Report.tsv` / `HashRestore_RecoveredNames.lst` 是**产物**而非日志（会被读回去），它们留在各自的输出目录里，不受上面这条规则影响。
 
 ## 2. 映射文件格式
 
@@ -209,13 +229,13 @@ Hook 撞库恢复模块会弹出准备窗口，不会点击后立刻启动游戏
 - 实时根据已有映射恢复纯 Hash 目录。
 - 写入恢复进度与失败记录。
 
-日志：
+日志（会话日志在工具目录的 `Log\` 下，报表留在游戏目录）：
 
 ```text
-Extractor_Output/Extractor_Log/RuntimeHashRestore.log
-Extractor_Output/Extractor_Log/HashRestore.log
-Extractor_Output/Extractor_Log/HashRestore_Report.tsv
-Extractor_Output/Extractor_Log/HashRestore_Unresolved.log
+工具目录/Log/RuntimeHashRestore.log
+工具目录/Log/HashRestore.log
+工具目录/Log/HashRestore_Unresolved.log
+游戏目录/Extractor_Output/Extractor_Log/HashRestore_Report.tsv
 ```
 
 ### 3.3 Hook 撞库恢复模块
@@ -271,7 +291,7 @@ flowchart TD
     K -- "不存在但有旧 match" --> M["兼容导入旧 match"]
     L --> N["直接写入 HashRestore_RecoveredNames.lst"]
     M --> N
-    N --> O["写入 Extractor_Log/HashCrack.log"]
+    N --> O["写入工具目录/Log/HashCrack.log"]
 ```
 
 ### 当前实现细节
@@ -290,7 +310,7 @@ flowchart TD
 6. 阶段完成后重写排序后的 `HashRestore_RecoveredNames.lst` 作为收尾。
 7. 通过 Loader IPC 更新主窗口进度条。
 8. 将本次候选表归档为 `_tmp.txt`。
-9. 写入 `HashCrack.log` 并通知 Loader 完成。
+9. 写入 `Log\HashCrack.log` 并通知 Loader 完成。
 
 注意：候选扫描会跳过 `_match.txt`，避免把 `files_xxx_match.txt` 当成候选表再生成 `files_xxx_match_match.txt`。
 
@@ -304,7 +324,7 @@ flowchart TD
 
 - `StringHashDumper_Output/HashRestore_RecoveredNames.lst`
 - `Extractor_Output/Extractor_Log/HashRestore_Report.tsv`
-- `Extractor_Output/Extractor_Log/HashRestore.log`
+- `工具目录/Log/HashRestore.log`
 
 `HashRestore_Report.tsv` 用于跨次运行统计已恢复、失败、剩余数量。这样用户中途中断后，再次打开模块可以继续计算进度，而不是从空状态开始。
 

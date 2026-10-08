@@ -1,4 +1,6 @@
 ﻿#include "HashRestoreUI.h"
+#include "logdir.h"
+#include "utf8text.h"
 
 #include <CommCtrl.h>
 #include <ShObjIdl.h>
@@ -119,7 +121,6 @@ namespace
     std::wstring MakeRelativePath(const std::wstring& root, const std::wstring& path);
     std::vector<std::wstring> SplitRelativePath(const std::wstring& relativePath);
     void CollectFilesRecursive(const std::wstring& directory, std::vector<std::wstring>& files);
-    void AppendUtf8Line(const std::wstring& filePath, const std::wstring& line);
     void SortRecoveredNameList(const std::wstring& filePath);
     void RefreshLoadedProgress(RestoreContext* context);
     void PostProgress(HWND window,
@@ -1326,44 +1327,6 @@ namespace
         return path;
     }
 
-    void AppendUtf8Line(const std::wstring& filePath, const std::wstring& line)
-    {
-        HANDLE file = ::CreateFileW(filePath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (file == INVALID_HANDLE_VALUE)
-        {
-            return;
-        }
-
-        int utf8Length = ::WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.length(), nullptr, 0, nullptr, nullptr);
-        if (utf8Length > 0)
-        {
-            std::string utf8((size_t)utf8Length, '\0');
-            ::WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.length(), utf8.data(), utf8Length, nullptr, nullptr);
-            DWORD written = 0u;
-            ::WriteFile(file, utf8.data(), (DWORD)utf8.size(), &written, nullptr);
-        }
-        ::CloseHandle(file);
-    }
-
-    void WriteUtf8Text(const std::wstring& filePath, const std::wstring& text)
-    {
-        HANDLE file = ::CreateFileW(filePath.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (file == INVALID_HANDLE_VALUE)
-        {
-            return;
-        }
-
-        int utf8Length = ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), (int)text.length(), nullptr, 0, nullptr, nullptr);
-        if (utf8Length > 0)
-        {
-            std::string utf8((size_t)utf8Length, '\0');
-            ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), (int)text.length(), utf8.data(), utf8Length, nullptr, nullptr);
-            DWORD written = 0u;
-            ::WriteFile(file, utf8.data(), (DWORD)utf8.size(), &written, nullptr);
-        }
-        ::CloseHandle(file);
-    }
-
     void WriteRestoreLog(const std::wstring& logDirectory, const wchar_t* stage, const wchar_t* format, ...)
     {
         wchar_t message[2048]{};
@@ -1568,10 +1531,14 @@ namespace
         unsigned int lastLoggedDirectoryMapCount = (unsigned int)-1;
         unsigned int lastLoggedFileNameMapCount = (unsigned int)-1;
         bool reportHeaderWritten = false;
-        std::wstring logDirectory = CombinePath(restore->SourceDirectory, L"Extractor_Log");
+        // 会话日志统一到 <工具根>\Log\；HashRestore_Report.tsv 是**产物**
+        // （下次加载要读回去统计），仍旧跟着这份解包结果留在 <源目录>\Extractor_Log\。
+        const std::wstring logDirectory =
+            Log::ResolveLogDirectoryFromCallerModule(reinterpret_cast<const void*>(&RestoreThreadProc)).path;
+        const std::wstring reportDirectory = CombinePath(restore->SourceDirectory, L"Extractor_Log");
 
         ::SHCreateDirectoryExW(nullptr, restore->HashLogDirectory.c_str(), nullptr);
-        ::SHCreateDirectoryExW(nullptr, logDirectory.c_str(), nullptr);
+        ::SHCreateDirectoryExW(nullptr, reportDirectory.c_str(), nullptr);
         WriteRestoreLog(logDirectory,
                         L"START",
                         L"source=\"%s\" hashLog=\"%s\" supplemental=\"%s\"",
@@ -1692,7 +1659,7 @@ namespace
 
             if (!reportHeaderWritten)
             {
-                AppendUtf8Line(CombinePath(logDirectory, L"HashRestore_Report.tsv"), L"SourcePath\tDirectoryHash\tFileHash\tDirectoryName\tFileName\tTargetPath\tStatus\r\n");
+                AppendUtf8Line(CombinePath(reportDirectory, L"HashRestore_Report.tsv"), L"SourcePath\tDirectoryHash\tFileHash\tDirectoryName\tFileName\tTargetPath\tStatus\r\n");
                 reportHeaderWritten = true;
             }
 

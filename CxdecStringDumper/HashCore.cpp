@@ -2,6 +2,8 @@
 #include "pe.h"
 #include "file.h"
 #include "directory.h"
+#include "logdir.h"
+#include "utf8text.h"
 #include "path.h"
 #include "stringhelper.h"
 #include "ExtendUtils.h"
@@ -17,10 +19,8 @@ namespace
     constexpr wchar_t HashCrackModeEnvName[] = L"CXDEC_HASH_CRACK_MODE";
     constexpr wchar_t HashCrackDirsFileEnvName[] = L"CXDEC_HASH_CRACK_DIRS_FILE";
     constexpr wchar_t HashCrackFilesFileEnvName[] = L"CXDEC_HASH_CRACK_FILES_FILE";
-    constexpr wchar_t HashCrackPureHashDirEnvName[] = L"CXDEC_HASH_CRACK_PURE_HASH_DIR";
     constexpr wchar_t HashCrackSupplementalMapEnvName[] = L"CXDEC_HASH_CRACK_SUPPLEMENTAL_MAP";
     constexpr wchar_t RecoveredNamesFileName[] = L"HashRestore_RecoveredNames.lst";
-    constexpr wchar_t ExtractorLogDirectoryName[] = L"Extractor_Log";
     constexpr wchar_t HashCrackLogFileName[] = L"HashCrack.log";
 
     struct HashCrackThreadParameter
@@ -513,30 +513,17 @@ namespace
         fclose(fp);
     }
 
-    void AppendUtf8LineLocal(const std::wstring& filePath, const std::wstring& line)
+    // 撞库日志的落点。
+    //
+    // 以前跟着"纯Hash目录或输出目录"走（<...>\Extractor_Log\），一个游戏目录一个地方；
+    // 现在统一进 <工具根>\Log\，跟其余日志一个地方。
+    // 这份源码同时编进 CxdecStringDumper.dll 和 CxdecHashRestore.dll，所以用
+    // "按本函数地址反查模块"的方式定位工具根，两个模块各自算各的、都不会认错。
+    std::wstring GetHashCrackLogDirectory()
     {
-        FILE* fp = nullptr;
-        if (_wfopen_s(&fp, filePath.c_str(), L"ab") != 0 || fp == nullptr)
-        {
-            return;
-        }
-        int length = ::WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.length(), nullptr, 0, nullptr, nullptr);
-        if (length > 0)
-        {
-            std::string utf8((size_t)length, '\0');
-            ::WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.length(), utf8.data(), length, nullptr, nullptr);
-            fwrite(utf8.data(), 1, utf8.size(), fp);
-        }
-        fclose(fp);
-    }
-
-    std::wstring GetHashCrackLogDirectory(const std::wstring& outputDirectory)
-    {
-        std::wstring pureHashDirectory = GetEnvironmentString(HashCrackPureHashDirEnvName);
-        std::wstring baseDirectory = pureHashDirectory.empty() ? outputDirectory : pureHashDirectory;
-        std::wstring logDirectory = CombinePathLocal(baseDirectory, ExtractorLogDirectoryName);
-        ::CreateDirectoryW(logDirectory.c_str(), nullptr);
-        return logDirectory;
+        const Log::LogDirectory directory =
+            Log::ResolveLogDirectoryFromCallerModule(reinterpret_cast<const void*>(&GetHashCrackLogDirectory));
+        return directory.path;
     }
 
     void WriteHashCrackLog(const std::wstring& logDirectory, const std::wstring& message)
@@ -552,7 +539,7 @@ namespace
                    st.wHour,
                    st.wMinute,
                    st.wSecond);
-        AppendUtf8LineLocal(CombinePathLocal(logDirectory, HashCrackLogFileName), std::wstring(prefix) + message + L"\r\n");
+        AppendUtf8Line(CombinePathLocal(logDirectory, HashCrackLogFileName), std::wstring(prefix) + message + L"\r\n");
     }
 
     HWND GetLoaderWindowFromEnvironment()
@@ -707,7 +694,7 @@ namespace
             std::wstring recoveredLine = MakeRecoveredNameLine(hash, displayName);
             if (!recoveredLine.empty() && recoveredLines.insert(recoveredLine).second)
             {
-                AppendUtf8LineLocal(recoveredListPath, recoveredLine + L"\r\n");
+                AppendUtf8Line(recoveredListPath, recoveredLine + L"\r\n");
             }
             ++count;
             ++processedCount;
@@ -734,7 +721,7 @@ namespace
         std::wstring dirsPath = GetEnvironmentString(HashCrackDirsFileEnvName);
         std::wstring filesPath = GetEnvironmentString(HashCrackFilesFileEnvName);
         std::wstring supplementalPath = GetEnvironmentString(HashCrackSupplementalMapEnvName);
-        std::wstring logDirectory = GetHashCrackLogDirectory(crack->OutputDirectory);
+        std::wstring logDirectory = GetHashCrackLogDirectory();
         std::unordered_set<std::wstring> recoveredLines;
         LoadTextLineSet(CombinePathLocal(crack->OutputDirectory, RecoveredNamesFileName), recoveredLines);
         if (!supplementalPath.empty())
@@ -889,10 +876,13 @@ namespace Engine
             {
                 HashCore* dumper = g_Instance;
                 Log::Logger& uniLogger = dumper->mUniversalLogger;
-                
-                uniLogger.WriteUnicode(L"Hash Seed:%s\r\n", storageMedia->HasherSeed.c_str());
-                uniLogger.WriteUnicode(L"PathNameHasherSalt:%s\r\n", StringHelper::BytesToHexStringW(storageMedia->PathNameHasher->GetSaltBytes(), storageMedia->PathNameHasher->GetSaltLength()).c_str());
-                uniLogger.WriteUnicode(L"FileNameHasherSalt:%s\r\n", StringHelper::BytesToHexStringW(storageMedia->FileNameHasher->GetSaltBytes(), storageMedia->FileNameHasher->GetSaltLength()).c_str());
+
+                // 走 WriteLine 而不是 WriteUnicode：这份是**会话日志**（给人看的），
+                // 跟其余日志一样 UTF-8 + 时间戳；UTF-16 那套留给 DirectoryHash.log /
+                // FileNameHash.log —— 那两份是映射库，格式不能动。
+                uniLogger.WriteLine(L"Hash Seed:%s", storageMedia->HasherSeed.c_str());
+                uniLogger.WriteLine(L"PathNameHasherSalt:%s", StringHelper::BytesToHexStringW(storageMedia->PathNameHasher->GetSaltBytes(), storageMedia->PathNameHasher->GetSaltLength()).c_str());
+                uniLogger.WriteLine(L"FileNameHasherSalt:%s", StringHelper::BytesToHexStringW(storageMedia->FileNameHasher->GetSaltBytes(), storageMedia->FileNameHasher->GetSaltLength()).c_str());
             }
 
             //文件夹路径Hash虚表Hook
@@ -989,6 +979,11 @@ namespace Engine
         this->SetHashOutputDirectory(dumpOutDirectory);
     }
 
+    void HashCore::SetLogDirectory(const std::wstring& directory)
+    {
+        this->mLogDirectoryPath = directory;
+    }
+
     void HashCore::SetHashOutputDirectory(const std::wstring& directory)
     {
         this->mDumperDirectoryPath = directory;
@@ -997,9 +992,13 @@ namespace Engine
         Directory::Create(directory);
 
         //日志初始化。Hash日志作为长期映射库追加写入，不再删除旧记录。
+        //DirectoryHash.log / FileNameHash.log 是映射库**产物**（HashRestore 会读回去），
+        //所以永远留在输出目录；Universal.log 才是会话日志，跟着统一日志目录走。
         std::wstring directoryHashLogPath = Path::Combine(directory, HashCore::DirectoryHashFileName);
         std::wstring fileNameHashLogPath = Path::Combine(directory, HashCore::FileNameHashFileName);
-        std::wstring universalLogPath = Path::Combine(directory, HashCore::UniversalFileName);
+        const std::wstring logDirectory = this->mLogDirectoryPath.empty() ? directory : this->mLogDirectoryPath;
+        Directory::Create(logDirectory);
+        std::wstring universalLogPath = Path::Combine(logDirectory, HashCore::UniversalFileName);
 
         this->mDirectoryHashLogger.Close();
         this->mFileNameHashLogger.Close();
@@ -1018,6 +1017,7 @@ namespace Engine
         this->mUniversalLogger.OpenKeepingPrevious(universalLogPath.c_str());
 
         //写UTF-16LE bom头。追加已有Hash日志时不能在中间再次写BOM。
+        //Universal.log 不走这里：它是 UTF-8 文本日志，没有 BOM 这回事。
         {
             WORD bom = 0xFEFF;
             if (writeDirectoryBom)
@@ -1029,8 +1029,6 @@ namespace Engine
             {
                 this->mFileNameHashLogger.WriteData(&bom, sizeof(bom));
             }
-
-            this->mUniversalLogger.WriteData(&bom, sizeof(bom));
         }
     }
 

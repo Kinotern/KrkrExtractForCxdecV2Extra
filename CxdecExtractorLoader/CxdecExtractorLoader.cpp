@@ -12,11 +12,13 @@
 #include <vector>
 
 #include "loaderipc.h"
+#include "diag.h"
 #include "path.h"
 #include "util.h"
 #include "directory.h"
 #include "encoding.h"
 #include "log.h"
+#include "logdir.h"
 #include "resource.h"
 #include "TryExport.h"
 
@@ -1730,12 +1732,14 @@ namespace
 
     // 加载器日志。
     //
-    // 以前是"每写一行就 _wfopen_s 开一次、ANSI 文本模式、没有时间戳"，而且打开失败
-    // 完全静默 —— 用户报"日志是空的"时分不清是没出事还是压根没写进去。现在改走
-    // Common 的 Log::Logger：UTF-8、带锁、追加、带时间戳，并且能查询打开/写入是否成功。
+    // 落点统一到 <工具根>\Log\（就是 loader.exe 旁边的 Log 目录），跟解包器、
+    // 各 Dumper、UI 写同一处：用户报问题时只要看这一个地方。工具根写不了
+    // （装在 Program Files 之类）时由 logdir 退到 %LOCALAPPDATA%\KrkrExtract\Log\，
+    // 并把最终位置与原因写在日志开头。
     //
-    // 首选 loader 同目录；那里可能只读（装在 Program Files 下），失败就退到
-    // %LOCALAPPDATA%\KrkrExtract\，并把最终位置与失败原因写在日志开头。
+    // 以前是"每写一行就 _wfopen_s 开一次、ANSI 文本模式、没有时间戳"，而且打开失败
+    // 完全静默 —— 用户报"日志是空的"时分不清是没出事还是压根没写进去。现在走
+    // Common 的 Log::Logger：UTF-8、带锁、追加、带时间戳，并且能查询打开/写入是否成功。
     Log::Logger& LoaderLogger()
     {
         static Log::Logger logger;
@@ -1745,51 +1749,53 @@ namespace
         {
             initialized = true;
 
-            const std::wstring primary =
-                Path::GetDirectoryName(g_LoaderFullPath) + L"\\CxdecExtractorLoader.log";
-            logger.Open(primary.c_str());
-            std::wstring used = primary;
-
-            if (!logger.IsOpen())
+            std::wstring loaderDirectory = Path::GetDirectoryName(g_LoaderFullPath);
+            if (loaderDirectory.empty())
             {
-                const Win32Error::Info openError = logger.LastOpenError();
-
-                wchar_t local[MAX_PATH] = {};
-                if (::SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, local) == S_OK)
-                {
-                    const std::wstring dir = std::wstring(local) + L"\\KrkrExtract";
-                    Win32Error::Info ignored;
-                    Directory::Create(dir, &ignored);
-
-                    const std::wstring alt = dir + L"\\CxdecExtractorLoader.log";
-                    logger.Open(alt.c_str());
-                    if (logger.IsOpen())
-                    {
-                        used = alt;
-                        logger.WriteLine(L"[Loader] 主日志位置不可写，已改用：%s", used.c_str());
-                        logger.WriteLine(L"[Loader] 原因：%s",
-                                         Win32Error::Describe(openError).c_str());
-                    }
-                }
+                wchar_t self[MAX_PATH]{};
+                ::GetModuleFileNameW(nullptr, self, _countof(self));
+                loaderDirectory = Path::GetDirectoryName(self);
             }
+
+            const Log::LogDirectory directory = Log::ResolveLogDirectory(loaderDirectory);
+            const std::wstring path = Log::LogFilePath(directory, L"CxdecExtractorLoader.log");
+            logger.Open(path.c_str());
 
             if (logger.IsOpen())
             {
-                logger.WriteLine(L"[Loader] log file: %s", used.c_str());
+                logger.WriteLine(L"[Loader] log file: %s", path.c_str());
+
+                // 换了地方就得说明白：用户按"工具目录"的老习惯去找会扑空。
+                if (directory.fallback)
+                {
+                    logger.WriteLine(L"[Loader] 主日志目录不可用，已改用：%s", directory.path.c_str());
+                    logger.WriteLine(L"[Loader] 主位置：%s（建目录失败，code=%lu）",
+                                     directory.primaryPath.c_str(),
+                                     static_cast<unsigned long>(directory.primaryError));
+                }
+            }
+            else
+            {
+                ::OutputDebugStringW(Win32Error::Describe(logger.LastOpenError()).c_str());
             }
         }
 
         return logger;
     }
 
-    void LoaderLog(const wchar_t* text)
+    void LoaderLogLevel(Log::Level level, const wchar_t* text)
     {
         ::OutputDebugStringW(text);
 
         if (LoaderLogger().IsOpen())
         {
-            LoaderLogger().WriteLine(L"%s", text);
+            LoaderLogger().WriteLineLevel(level, L"%s", text);
         }
+    }
+
+    void LoaderLog(const wchar_t* text)
+    {
+        LoaderLogLevel(Log::Level::Info, text);
     }
 
     // 失败点统一走这个：把 Win32 错误码和路径一起写出来。
@@ -1798,7 +1804,8 @@ namespace
     // 路径不存在？）。**必须在失败那次调用之后立刻调用**，中间不要再插别的 API。
     void LoaderLogFailure(const wchar_t* what, const std::wstring& path)
     {
-        LoaderLog(Win32Error::FailureLine(what, path, Win32Error::Capture()).c_str());
+        LoaderLogLevel(Log::Level::Error,
+                       Win32Error::FailureLine(what, path, Win32Error::Capture()).c_str());
     }
 
     // 检测并处理 SteamStub 保护壳。
@@ -1905,13 +1912,15 @@ namespace
                         LoaderLogFailure(L"MoveFile 回滚 steam_api.dll", api);
                     }
                 }
-                LoaderLog(Win32Error::FailureLine(L"CopyFile steam_api.dll", api, copyError).c_str());
+                LoaderLogLevel(Log::Level::Error,
+                               Win32Error::FailureLine(L"CopyFile steam_api.dll", api, copyError).c_str());
             }
         }
         else
         {
-            LoaderLog(haveGameApi ? L"[Loader] WARNING: cracked steam_api.dll missing, skip swap"
-                                  : L"[Loader] no steam_api.dll in game dir, skip swap");
+            LoaderLogLevel(Log::Level::Warn,
+                           haveGameApi ? L"[Loader] WARNING: cracked steam_api.dll missing, skip swap"
+                                       : L"[Loader] no steam_api.dll in game dir, skip swap");
         }
 
         if (packed)
@@ -1919,7 +1928,7 @@ namespace
             LoaderLog(L"[Loader] Unpacking...");
             if (!P(exePath.c_str(), unpacked.c_str()))
             {
-                LoaderLog(L"[Loader] FAIL: unpack");
+                LoaderLogLevel(Log::Level::Error, L"[Loader] FAIL: unpack");
                 LogLastError(L"[Loader] unpack: ");
                 ::FreeLibrary(hUnp);
                 return true;
@@ -2463,6 +2472,23 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 
     g_KrkrExeFullPath = krkrExeFullPath;
     g_KrkrExeDirectory = krkrExeDirectory;
+
+    // 启动就把环境落进日志。排查"某些机器上解包失败"时，最先要排除的就是环境差异：
+    // 路径过长、盘符是网络盘、剩余空间不足、系统没开长路径支持、代码页不对、目录不可写。
+    // 游戏目录和工具目录各记一份 —— 写失败的目录通常是游戏目录。
+    {
+        LoaderLogLevel(Log::Level::Info, L"[env] tool dir");
+        for (const std::wstring& line : Diag::SnapshotLines(g_LoaderCurrentDirectory))
+        {
+            LoaderLogLevel(Log::Level::Info, line.c_str());
+        }
+
+        LoaderLogLevel(Log::Level::Info, L"[env] game dir");
+        for (const std::wstring& line : Diag::SnapshotLines(krkrExeDirectory))
+        {
+            LoaderLogLevel(Log::Level::Info, line.c_str());
+        }
+    }
 
     // 带壳的游戏在这里先脱壳；脱壳流程自己会退出，不会再进功能窗口。
     if (RunSteamStubPrecheck(nullptr, krkrExeFullPath))

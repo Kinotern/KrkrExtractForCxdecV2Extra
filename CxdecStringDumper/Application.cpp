@@ -1,5 +1,6 @@
 ﻿#include "Application.h"
 #include "RuntimeHashUI.h"
+#include "logdir.h"
 #include "path.h"
 #include "util.h"
 #include "ExtendUtils.h"
@@ -82,9 +83,7 @@ namespace Engine
 
         //单例Dumper
         this->mStringDumper = HashCore::GetInstance();
-
-        //设置解包输出路径
-        this->mStringDumper->SetOutputDirectory(this->mCurrentDirectoryPath);
+        // 输出目录和日志目录都要模块路径，统一放到 InitializeModule 里设。
     }
 
     Application::~Application()
@@ -100,6 +99,12 @@ namespace Engine
     void Application::InitializeModule(HMODULE hModule)
     {
         this->mModuleDirectoryPath = Path::GetDirectoryName(Util::GetModulePathW(hModule));
+
+        // 会话日志统一到 <工具根>\Log\；映射库产物（DirectoryHash.log 等）仍跟着输出目录。
+        // 顺序不能反：SetHashOutputDirectory 才是开日志的地方。
+        this->mStringDumper->SetLogDirectory(Log::ResolveLogDirectory(this->mModuleDirectoryPath).path);
+        this->mStringDumper->SetOutputDirectory(this->mCurrentDirectoryPath);
+
         RuntimeHashUI::Start(hModule, this->mCurrentDirectoryPath);
     }
 

@@ -1,4 +1,5 @@
 #include "Application.h"
+#include "logdir.h"
 #include "path.h"
 #include "util.h"
 #include "ExtendUtils.h"
@@ -71,7 +72,7 @@ namespace Engine
         this->mCurrentDirectoryPath = Path::GetDirectoryName(Util::GetModulePathW(::GetModuleHandleW(nullptr)));
         this->mTVPExporterInitialized = false;
         this->mKeyDumper = new KeyCore();
-        this->mKeyDumper->SetOutputDirectory(this->mCurrentDirectoryPath);
+        // 产物目录和日志目录都要知道模块路径才能定，统一放到 InitializeModule 里设。
     }
 
     Application::~Application()
@@ -86,6 +87,11 @@ namespace Engine
     void Application::InitializeModule(HMODULE hModule)
     {
         this->mModuleDirectoryPath = Path::GetDirectoryName(Util::GetModulePathW(hModule));
+
+        // 日志统一到 <工具根>\Log\（本 DLL 在 <工具根>\CxdecExtractordll 下，上跳一级），
+        // 产物仍然跟着游戏目录走。顺序不能反：SetOutputDirectory 才是开日志的地方。
+        this->mKeyDumper->SetLogDirectory(Log::ResolveLogDirectory(this->mModuleDirectoryPath).path);
+        this->mKeyDumper->SetOutputDirectory(this->mCurrentDirectoryPath);
     }
 
     void Application::InitializeTVPEngine(iTVPFunctionExporter* exporter)

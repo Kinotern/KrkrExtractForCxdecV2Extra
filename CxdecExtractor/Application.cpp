@@ -1,4 +1,5 @@
 ﻿#include "Application.h"
+#include "logdir.h"
 #include "path.h"
 #include "util.h"
 #include "ExtendUtils.h"
@@ -96,8 +97,9 @@ namespace Engine
     {
         this->mModuleDirectoryPath = Path::GetDirectoryName(Util::GetModulePathW(hModule));
 
-        // 日志跟随注入 DLL 输出，避免游戏切换工作目录时找不到日志。
-        this->mExtractor->SetLoggerDirectory(this->mModuleDirectoryPath);
+        // 日志统一落在 <工具根>\Log\：本 DLL 被注入到游戏进程里跑，模块目录是
+        // <工具根>\CxdecExtractordll，由 logdir 上跳一级，跟 loader 那边同一个地方。
+        this->mExtractor->SetLoggerDirectory(Log::ResolveLogDirectory(this->mModuleDirectoryPath).path);
     }
 
     void Application::InitializeTVPEngine(iTVPFunctionExporter* exporter)

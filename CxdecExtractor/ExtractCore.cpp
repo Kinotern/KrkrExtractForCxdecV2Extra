@@ -71,6 +71,10 @@ namespace Engine
 		// 保留上一次的日志（挪成 .1）：用户"再跑一次看看"时，失败现场不会跟着丢。
 		// 以前这里是先 Delete 再 Open，等于每次运行都把上一次的证据抹掉。
 		this->mLogger.OpenKeepingPrevious(path.c_str());
+
+		// 落点本身记一行：日志位置是算出来的（<工具根>\Log\，工具根写不了会退到
+		// %LOCALAPPDATA%），用户要找日志时得有个准话。
+		this->mLogger.WriteLine(L"Log file: %s", path.c_str());
 	}
 
     void ExtractCore::SetProgressCallback(tExtractProgressCallback callback, void* context)
@@ -116,7 +120,7 @@ namespace Engine
 		if (!this->IsInitialized())
 		{
             const std::wstring detail = L"未初始化CxdecV2接口，请检查是否为无DRM的Wamsoft Hxv4加密游戏";
-            this->WriteLog(L"Extract Failed: %s | %s", packageDisplayName.c_str(), detail.c_str());
+            this->WriteLogLevel(Log::Level::Error, L"Extract Failed: %s | %s", packageDisplayName.c_str(), detail.c_str());
             this->NotifyProgress(taskId, packagePath, ExtractTaskFailed, 0u, 0u, detail);
 			return false;
 		}
@@ -125,7 +129,7 @@ namespace Engine
         if (tjsXp3PackagePath.IsEmpty())
         {
             const std::wstring detail = L"封包路径无效";
-            this->WriteLog(L"Extract Failed: %s | %s", packageDisplayName.c_str(), detail.c_str());
+            this->WriteLogLevel(Log::Level::Error, L"Extract Failed: %s | %s", packageDisplayName.c_str(), detail.c_str());
             this->NotifyProgress(taskId, packagePath, ExtractTaskFailed, 0u, 0u, detail);
             return false;
         }
@@ -135,7 +139,7 @@ namespace Engine
 		if (entries.empty())
 		{
             const std::wstring detail = L"请选择正确的XP3封包";
-            this->WriteLog(L"Extract Failed: %s | %s", packageDisplayName.c_str(), detail.c_str());
+            this->WriteLogLevel(Log::Level::Error, L"Extract Failed: %s | %s", packageDisplayName.c_str(), detail.c_str());
             this->NotifyProgress(taskId, packagePath, ExtractTaskFailed, 0u, 0u, detail);
             return false;
 		}
@@ -149,7 +153,7 @@ namespace Engine
         {
             const std::wstring failure =
                 Win32Error::FailureLine(L"CreateDirectory", effectiveOutputDirectory, createError);
-            this->WriteLog(L"Extract Failed: %s | %s", packageDisplayName.c_str(), failure.c_str());
+            this->WriteLogLevel(Log::Level::Error, L"Extract Failed: %s | %s", packageDisplayName.c_str(), failure.c_str());
             this->NotifyProgress(taskId, packagePath, ExtractTaskFailed, 0u, 0u, failure);
             return false;
         }
@@ -183,7 +187,7 @@ namespace Engine
         if (!File::Delete(fileTableOutput, &deleteError))
         {
             // 删不掉就是"往旧清单上追加"，后面回填路径会读到上一次的残留
-            this->WriteLog(L"File Table Delete Failed: %s | %s", fileTableOutput.c_str(),
+            this->WriteLogLevel(Log::Level::Error, L"File Table Delete Failed: %s | %s", fileTableOutput.c_str(),
                            Win32Error::FailureLine(L"DeleteFile", fileTableOutput, deleteError).c_str());
         }
         Log::Logger fileTable = Log::Logger(fileTableOutput.c_str());
@@ -191,7 +195,7 @@ namespace Engine
         // 清单就写在输出目录里，打不开的话这一趟没有任何映射记录可查，必须显式报出来
         if (!fileTable.IsOpen())
         {
-            this->WriteLog(L"File Table Unavailable: %s | %s", fileTableOutput.c_str(),
+            this->WriteLogLevel(Log::Level::Warn, L"File Table Unavailable: %s | %s", fileTableOutput.c_str(),
                            Win32Error::Describe(fileTable.LastOpenError()).c_str());
         }
 
@@ -242,14 +246,14 @@ namespace Engine
                 currentSucceeded = false;
                 ++this->mFailures.openStream;
                 this->mFailures.AddSample(L"打不开资源流 " + relativePath);
-                this->WriteLog(L"File Not Exist: %s", relativePath.c_str());
+                this->WriteLogLevel(Log::Level::Warn, L"File Not Exist: %s", relativePath.c_str());
             }
 
             if (!currentSucceeded && IsKnownPlaceholderEntry(entry))
             {
                 currentSucceeded = true;
                 ++skippedPlaceholderCount;
-                this->WriteLog(L"Skip Placeholder Entry: %s", relativePath.c_str());
+                this->WriteLogLevel(Log::Level::Warn, L"Skip Placeholder Entry: %s", relativePath.c_str());
             }
 
             if (!currentSucceeded)
@@ -271,7 +275,7 @@ namespace Engine
         {
             if (skippedPlaceholderCount > 0u)
             {
-                this->WriteLog(L"Skipped Placeholder Entries: %s | %u",
+                this->WriteLogLevel(Log::Level::Warn, L"Skipped Placeholder Entries: %s | %u",
                                packageDisplayName.c_str(),
                                skippedPlaceholderCount);
             }
@@ -281,11 +285,11 @@ namespace Engine
         }
         else
         {
-            this->WriteLog(L"Extract Completed With Errors: %s", packageDisplayName.c_str());
+            this->WriteLogLevel(Log::Level::Warn, L"Extract Completed With Errors: %s", packageDisplayName.c_str());
 
             // 收尾汇总：一次解包可能上千条失败、日志上百万字节，这一行比让人翻日志有用。
             const FailureTally& tally = this->mFailures;
-            this->WriteLog(L"Failure summary: dir-create=%u open-stream=%u write-open=%u "
+            this->WriteLogLevel(Log::Level::Warn, L"Failure summary: dir-create=%u open-stream=%u write-open=%u "
                            L"write-data=%u invalid=%u",
                            tally.dirCreate, tally.openStream, tally.writeOpen, tally.writeData,
                            tally.invalid);
@@ -340,7 +344,7 @@ namespace Engine
 			tTJSVariantOctet* dirHash = tjsDirHash.AsOctetNoAddRef();
             if (dirHash == nullptr || dirHash->GetLength() != 8u)
             {
-                this->WriteLog(L"Skip Entry: invalid directory hash length");
+                this->WriteLogLevel(Log::Level::Warn, L"Skip Entry: invalid directory hash length");
                 continue;
             }
 
@@ -363,7 +367,7 @@ namespace Engine
 				tTJSVariantOctet* fileNameHash = tjsFileNameHash.AsOctetNoAddRef();
                 if (fileNameHash == nullptr || fileNameHash->GetLength() != 32u)
                 {
-                    this->WriteLog(L"Skip Entry: invalid file hash length");
+                    this->WriteLogLevel(Log::Level::Warn, L"Skip Entry: invalid file hash length");
                     continue;
                 }
 
@@ -388,7 +392,7 @@ namespace Engine
 
                 if (!entry.IsVaild())
                 {
-                    this->WriteLog(L"Skip Entry: invalid ordinal");
+                    this->WriteLogLevel(Log::Level::Warn, L"Skip Entry: invalid ordinal");
                     continue;
                 }
 
@@ -417,7 +421,7 @@ namespace Engine
 		unsigned long long size = StreamUtils::IStreamEx::Length(stream);
 		if (size == 0)
 		{
-            this->WriteLog(L"Empty File: %s", relativePath.c_str());
+            this->WriteLogLevel(Log::Level::Warn, L"Empty File: %s", relativePath.c_str());
             return false;
 		}
 
@@ -432,7 +436,7 @@ namespace Engine
                 const std::wstring reason = Win32Error::FailureLine(L"CreateDirectory", outputDir, dirError);
                 ++this->mFailures.dirCreate;
                 this->mFailures.AddSample(L"建目录失败 " + relativePath + L" | " + reason);
-                this->WriteLog(L"Dir Create Failed: %s | %s", relativePath.c_str(), reason.c_str());
+                this->WriteLogLevel(Log::Level::Error, L"Dir Create Failed: %s | %s", relativePath.c_str(), reason.c_str());
                 return false;
             }
         }
@@ -481,7 +485,7 @@ namespace Engine
             this->mFailures.AddSample(L"写失败(" + std::wstring(File::WriteStageName(stage)) + L") " +
                                       relativePath + L" | " + reason);
 
-            this->WriteLog(L"Write Failed: %s | stage=%s | %zu 字节 | %s",
+            this->WriteLogLevel(Log::Level::Error, L"Write Failed: %s | stage=%s | %zu 字节 | %s",
                            relativePath.c_str(),
                            File::WriteStageName(stage),
                            buffer.size(),
@@ -490,7 +494,7 @@ namespace Engine
 		else
 		{
             ++this->mFailures.invalid;
-            this->WriteLog(L"Invaild File: %s", relativePath.c_str());
+            this->WriteLogLevel(Log::Level::Error, L"Invaild File: %s", relativePath.c_str());
 		}
 
 		stream->Seek(LARGE_INTEGER{ }, STREAM_SEEK_SET, nullptr);
@@ -643,6 +647,15 @@ namespace Engine
         std::wstring message = StringHelper::VFormat(format, ap);
         va_end(ap);
         this->mLogger.WriteLine(L"%s", message.c_str());
+    }
+
+    void ExtractCore::WriteLogLevel(Log::Level level, const wchar_t* format, ...)
+    {
+        va_list ap;
+        va_start(ap, format);
+        std::wstring message = StringHelper::VFormat(format, ap);
+        va_end(ap);
+        this->mLogger.WriteLineLevel(level, L"%s", message.c_str());
     }
 
     void ExtractCore::NotifyProgress(unsigned int taskId,

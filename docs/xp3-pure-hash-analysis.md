@@ -387,7 +387,7 @@ DragQueryFileW(hDrop, 0u, fullName, MaxPath)
 3. 尝试按文本格式解密
 4. 失败则按普通资源整流读取
 5. 调用 `File::WriteAllBytes()` 落盘
-6. 记录 `Extractor.log`
+6. 记录到工具目录的 `Log\Extractor.log`
 
 因此“创建纯哈希文件夹”并不是独立功能，而是**解包主流程的一部分副产物**：
 
@@ -428,9 +428,9 @@ fileTable.WriteUnicode(L"%s%s%s%s%s%s%s\r\n",
 
 输出文件：
 
-- `StringHashDumper_Output/DirectoryHash.log`
-- `StringHashDumper_Output/FileNameHash.log`
-- `StringHashDumper_Output/Universal.log`
+- `StringHashDumper_Output/DirectoryHash.log`（映射库产物，会被恢复流程读回去）
+- `StringHashDumper_Output/FileNameHash.log`（同上）
+- `工具目录/Log/Universal.log`（会话日志）
 
 这一步与“纯哈希解包”是互补关系：
 

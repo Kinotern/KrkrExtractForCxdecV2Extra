@@ -134,6 +134,7 @@ namespace Engine
 		static constexpr const wchar_t Split[] = L"##YSig##";		//输出分隔符
 
 		std::wstring mDumperDirectoryPath;			//Dump输出目录
+		std::wstring mLogDirectoryPath;				//会话日志目录（统一 Log 目录）；空 = 跟着输出目录
 		Log::Logger mDirectoryHashLogger;			//文件夹Hash日志
 		Log::Logger mFileNameHashLogger;			//文件名Hash日志
 		Log::Logger mUniversalLogger;				//通用日志
@@ -154,6 +155,13 @@ namespace Engine
 		// 设置Hash表输出路径
 		// directory：文件夹绝对路径
 		void SetOutputDirectory(const std::wstring& directory);
+		// 会话日志（Universal.log / HashCrack.log）的目录。
+		// 要在 SetHashOutputDirectory **之前**调用；不调就落在输出目录里。
+		// DirectoryHash.log / FileNameHash.log 是**映射库产物**（会被读回去），
+		// 永远留在输出目录，不受这里影响。
+		void SetLogDirectory(const std::wstring& directory);
+		// 当前会话日志目录（HashCrack 那条路径也要往里写）
+		const std::wstring& GetLogDirectoryPath() const { return mLogDirectoryPath; }
 		void SetHashOutputDirectory(const std::wstring& directory);
 		void WriteDirectoryHash(const std::wstring& relativeDirPath, const std::wstring& hash);
 		void WriteFileNameHash(const std::wstring& fileName, const std::wstring& hash);

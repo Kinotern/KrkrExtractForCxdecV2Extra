@@ -1,5 +1,7 @@
 ﻿#include "RuntimeHashUI.h"
 #include "HashRestoreUI.h"
+#include "logdir.h"
+#include "utf8text.h"
 
 #include <string>
 
@@ -26,25 +28,6 @@ namespace
             return directory + fileName;
         }
         return directory + L'\\' + fileName;
-    }
-
-    void AppendUtf8Line(const std::wstring& filePath, const std::wstring& line)
-    {
-        HANDLE file = ::CreateFileW(filePath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (file == INVALID_HANDLE_VALUE)
-        {
-            return;
-        }
-
-        int length = ::WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.length(), nullptr, 0, nullptr, nullptr);
-        if (length > 0)
-        {
-            std::string text((size_t)length, '\0');
-            ::WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.length(), text.data(), length, nullptr, nullptr);
-            DWORD written = 0u;
-            ::WriteFile(file, text.data(), (DWORD)text.size(), &written, nullptr);
-        }
-        ::CloseHandle(file);
     }
 
     void WriteRuntimeLog(RuntimeUiContext* context, const std::wstring& message)
@@ -99,7 +82,7 @@ namespace
                                 20, 128, 700, 24, hwnd, nullptr, nullptr, nullptr);
                 ::CreateWindowW(L"STATIC", L"DirectoryHash.log / FileNameHash.log 会持续追加并自动去重。", WS_CHILD | WS_VISIBLE | SS_LEFT,
                                 20, 166, 700, 22, hwnd, nullptr, nullptr, nullptr);
-                ::CreateWindowW(L"STATIC", L"运行日志：Extractor_Log\\RuntimeHashRestore.log", WS_CHILD | WS_VISIBLE | SS_LEFT,
+                ::CreateWindowW(L"STATIC", L"运行日志：<工具目录>\\Log\\RuntimeHashRestore.log", WS_CHILD | WS_VISIBLE | SS_LEFT,
                                 20, 194, 700, 22, hwnd, nullptr, nullptr, nullptr);
                 return 0;
             }
@@ -174,7 +157,11 @@ namespace Engine
             context->TargetDirectory = gameDirectory;
         }
         context->OutputDirectory = CombinePath(gameDirectory, L"StringHashDumper_Output");
-        context->LogDirectory = CombinePath(context->TargetDirectory, L"Extractor_Log");
+        // 会话日志统一到 <工具根>\Log\，跟解包器、Loader 那些写同一处；
+        // 纯Hash目录下不再留 Extractor_Log（那边只剩 HashRestore 的报表产物）。
+        context->LogDirectory = Log::ResolveLogDirectoryFromCallerModule(
+                                   reinterpret_cast<const void*>(&RuntimeHashUI::Start))
+                                   .path;
 
         ::CreateDirectoryW(context->LogDirectory.c_str(), nullptr);
         WriteRuntimeLog(context, L"运行时恢复Hash映射模块已加载");

@@ -176,6 +176,10 @@ namespace Engine
         // format：格式
         void WriteLog(const wchar_t* format, ...);
 
+        // 带级别的写日志。失败类走 Error、跳过/告警类走 Warn，其余 Info。
+        // 级别会写进行首（I/W/E），几万行的日志里可以直接筛出真正的问题。
+        void WriteLogLevel(Log::Level level, const wchar_t* format, ...);
+
         // 通知进度
         void NotifyProgress(unsigned int taskId,
                             const std::wstring& packagePath,

@@ -59,6 +59,7 @@ namespace Engine
         static constexpr const char VerifyPointSignature[] = "\xFF\x75\x24\x8D\x45\x8C\x53\xFF\x75\x1C\x57\x50\x8D\x45\xEC\x50";
 
         std::wstring mOutputDirectoryPath;
+        std::wstring mLogDirectory;      // 日志目录（统一 Log 目录）；空 = 跟着产物目录
         std::wstring mLogPath;
         std::wstring mJsonPath;
         std::wstring mTextPath;
@@ -97,6 +98,8 @@ namespace Engine
         ~KeyCore();
 
         void SetOutputDirectory(const std::wstring& directory);
+        // 日志目录。要在 SetOutputDirectory **之前**调用；不调就落在产物目录里。
+        void SetLogDirectory(const std::wstring& directory);
         void Initialize(HMODULE targetModule, PVOID codeVa, DWORD codeSize);
         bool IsInitialized() const;
         void OnProbeHit(ProbeType type, const ProbeRegisterFrame* frame);

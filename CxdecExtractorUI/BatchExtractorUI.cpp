@@ -1,4 +1,6 @@
 #include "BatchExtractorUI.h"
+#include "logdir.h"
+#include "utf8text.h"
 #include "resource.h"
 
 #include <CommCtrl.h>
@@ -171,32 +173,6 @@ namespace
         }
         text.resize((size_t)copied);
         return text;
-    }
-
-    void AppendUtf8Line(const std::wstring& filePath, const std::wstring& line)
-    {
-        HANDLE file = ::CreateFileW(filePath.c_str(),
-                                    FILE_APPEND_DATA,
-                                    FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                    nullptr,
-                                    OPEN_ALWAYS,
-                                    FILE_ATTRIBUTE_NORMAL,
-                                    nullptr);
-        if (file == INVALID_HANDLE_VALUE)
-        {
-            return;
-        }
-
-        int utf8Length = ::WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.length(), nullptr, 0, nullptr, nullptr);
-        if (utf8Length > 0)
-        {
-            std::string utf8((size_t)utf8Length, '\0');
-            ::WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.length(), utf8.data(), utf8Length, nullptr, nullptr);
-            DWORD written = 0u;
-            ::WriteFile(file, utf8.data(), (DWORD)utf8.size(), &written, nullptr);
-        }
-
-        ::CloseHandle(file);
     }
 
     void WriteUiLog(UiContext* context, const wchar_t* format, ...)
@@ -1047,7 +1023,8 @@ namespace UI
         ::InitializeCriticalSection(&context->LogLock);
 
         context->ModuleDirectory = GetDirectoryName(GetModulePath(startup.ModuleInstance));
-        context->UiLogPath = CombinePath(context->ModuleDirectory, L"ExtractorUI.log");
+        // 日志统一落在 <工具根>\Log\，跟解包器/Loader 写同一个目录。
+        context->UiLogPath = Log::LogFilePath(Log::ResolveLogDirectory(context->ModuleDirectory), L"ExtractorUI.log");
 
         std::wstring gameDirectory = GetDirectoryName(GetModulePath(::GetModuleHandleW(nullptr)));
         context->DefaultOutputDirectory = CombinePath(gameDirectory, L"Extractor_Output");

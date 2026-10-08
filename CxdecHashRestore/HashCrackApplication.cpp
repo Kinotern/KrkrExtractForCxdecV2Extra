@@ -2,6 +2,7 @@
 
 #include "HashCore.h"
 #include "ExtendUtils.h"
+#include "logdir.h"
 #include "path.h"
 #include "util.h"
 
@@ -79,10 +80,17 @@ namespace Engine
 
     void HashCrackApplication::Initialize(HMODULE module)
     {
-        UNREFERENCED_PARAMETER(module);
-
         std::wstring gameDirectory = Path::GetDirectoryName(Util::GetModulePathW(::GetModuleHandleW(nullptr)));
         g_HashCore = HashCore::GetInstance();
+
+        // 会话日志统一到 <工具根>\Log\（本 DLL 在 <工具根>\CxdecExtractordll 下，上跳一级）。
+        // 顺序不能反：Set*OutputDirectory 才是开日志的地方。
+        if (module != nullptr)
+        {
+            const std::wstring moduleDirectory = Path::GetDirectoryName(Util::GetModulePathW(module));
+            g_HashCore->SetLogDirectory(Log::ResolveLogDirectory(moduleDirectory).path);
+        }
+
         std::wstring hashOutputDirectory = GetEnvironmentString(HashCrackOutputDirectoryEnvName);
         if (hashOutputDirectory.empty())
         {

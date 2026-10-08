@@ -61,7 +61,7 @@ extern "C" __declspec(dllexport) void WINAPI ExtractPackage(const wchar_t* packa
             }
             else
             {
-                ::MessageBoxW(nullptr, L"提取失败，请查看 Extractor.log", L"错误", MB_OK);
+                ::MessageBoxW(nullptr, L"提取失败，请查看工具目录 Log 目录下的 Extractor.log", L"错误", MB_OK);
             }
             return success;
         });

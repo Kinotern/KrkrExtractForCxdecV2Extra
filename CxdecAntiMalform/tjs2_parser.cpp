@@ -1,30 +1,9 @@
 ﻿#include "tjs2_parser.h"
+#include "antimalform_log.h"
 #include <cstring>
 #include <cstdio>
 #include <windows.h>
 #include <cstdarg>
-static void T2Log(const wchar_t* fmt, ...) {
-    wchar_t buf[512];
-    va_list args;
-    va_start(args, fmt);
-    _vsnwprintf_s(buf, _TRUNCATE, fmt, args);
-    va_end(args);
-    OutputDebugStringW(buf);
-    FILE* f = nullptr;
-    {
-    static wchar_t _logPath[MAX_PATH] = {0};
-    if (!_logPath[0]) {
-        HMODULE _hMod = NULL;
-        GetModuleHandleExW(6, (LPCWSTR)&T2Log, &_hMod);
-        GetModuleFileNameW(_hMod, _logPath, MAX_PATH);
-        wchar_t* _bs = wcsrchr(_logPath, L'\\');
-        if (_bs) *(_bs+1) = 0;
-        wcscat_s(_logPath, L"CxdecAntiMalform.log");
-    }
-    _wfopen_s(&f, _logPath, L"a");
-}
-    if (f) { fwprintf(f, L"%s\n", buf); fflush(f); fclose(f); }
-}
 
 
 namespace Tjs2Parser {
@@ -44,7 +23,7 @@ static inline bool SafeRead16(const uint8_t* data, size_t off, size_t size, uint
         *out = LE16(data + off);
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        T2Log(L"[T2] SEH: AV at SafeRead16 off=0x%zX size=0x%zX", off, size);
+        AmLog(L"[T2] SEH: AV at SafeRead16 off=0x%zX size=0x%zX", off, size);
         return false;
     }
 }
@@ -55,7 +34,7 @@ static inline bool SafeRead32(const uint8_t* data, size_t off, size_t size, uint
         *out = LE32(data + off);
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        T2Log(L"[T2] SEH: AV at SafeRead32 off=0x%zX size=0x%zX", off, size);
+        AmLog(L"[T2] SEH: AV at SafeRead32 off=0x%zX size=0x%zX", off, size);
         return false;
     }
 }
@@ -74,24 +53,24 @@ ByteCode Parse(const uint8_t* data, size_t size) {
     ByteCode bc;
     bc.valid = false;
     if (size < 20) return bc;
-    if (LE32(data) != FILE_TAG || LE32(data + 4) != VER_TAG) { T2Log(L"[T2] BAD header"); return bc; }
-    if (LE32(data + 8) != static_cast<uint32_t>(size)) { T2Log(L"[T2] BAD size: hdr=0x%X size=%zu", LE32(data+8), size); return bc; }
+    if (LE32(data) != FILE_TAG || LE32(data + 4) != VER_TAG) { AmLog(L"[T2] BAD header"); return bc; }
+    if (LE32(data + 8) != static_cast<uint32_t>(size)) { AmLog(L"[T2] BAD size: hdr=0x%X size=%zu", LE32(data+8), size); return bc; }
 
     // --- DATA 区 ---
-    if (LE32(data + 12) != DATA_TAG) { T2Log(L"[T2] BAD DATA tag"); return bc; }
+    if (LE32(data + 12) != DATA_TAG) { AmLog(L"[T2] BAD DATA tag"); return bc; }
     uint32_t dataSize = LE32(data + 16);
     size_t off = 20;
     size_t dataEnd = off + dataSize;
-    if (dataEnd > size) { T2Log(L"[T2] dataEnd=%zu > size=%zu", dataEnd, size); return bc; }
+    if (dataEnd > size) { AmLog(L"[T2] dataEnd=%zu > size=%zu", dataEnd, size); return bc; }
 
     // DATA 区各数组依次排布，每段带 4 字节长度，byte/short 对齐到 4
 
     // 前进前校验：count >= 0，且 off + count*elemSize 不越界，
     // 然后按对齐后的字节数前进；越界返回 false
     auto safe_advance = [&](int32_t count, size_t elemSize, size_t align, size_t bound) -> bool {
-        if (count < 0) { T2Log(L"[T2] Negative count %d", count); return false; }
+        if (count < 0) { AmLog(L"[T2] Negative count %d", count); return false; }
         size_t bytes = static_cast<size_t>(count) * elemSize;
-        if (off + bytes > bound) { T2Log(L"[T2] Advance OOB: off=%zu bytes=%zu bound=%zu", off, bytes, bound); return false; }
+        if (off + bytes > bound) { AmLog(L"[T2] Advance OOB: off=%zu bytes=%zu bound=%zu", off, bytes, bound); return false; }
         off += bytes;
         if (align > 1) {
             size_t rem = off % align;
@@ -105,27 +84,27 @@ ByteCode Parse(const uint8_t* data, size_t size) {
     };
 
     // byte 数组
-    if (off + 4 > dataEnd) { T2Log(L"[T2] DATA truncated at byte array"); return bc; }
+    if (off + 4 > dataEnd) { AmLog(L"[T2] DATA truncated at byte array"); return bc; }
     int32_t count = static_cast<int32_t>(LE32(data + off)); off += 4;
     if (!safe_advance(count, 1, 4, dataEnd)) return bc;
 
     // short 数组
-    if (off + 4 > dataEnd) { T2Log(L"[T2] DATA truncated at short array"); return bc; }
+    if (off + 4 > dataEnd) { AmLog(L"[T2] DATA truncated at short array"); return bc; }
     count = static_cast<int32_t>(LE32(data + off)); off += 4;
     if (!safe_advance(count, 2, 4, dataEnd)) return bc;
 
     // long 数组
-    if (off + 4 > dataEnd) { T2Log(L"[T2] DATA truncated at long array"); return bc; }
+    if (off + 4 > dataEnd) { AmLog(L"[T2] DATA truncated at long array"); return bc; }
     count = static_cast<int32_t>(LE32(data + off)); off += 4;
     if (!safe_advance(count, 4, 1, dataEnd)) return bc;
 
     // longlong 数组
-    if (off + 4 > dataEnd) { T2Log(L"[T2] DATA truncated at longlong array"); return bc; }
+    if (off + 4 > dataEnd) { AmLog(L"[T2] DATA truncated at longlong array"); return bc; }
     count = static_cast<int32_t>(LE32(data + off)); off += 4;
     if (!safe_advance(count, 8, 1, dataEnd)) return bc;
 
     // double 数组
-    if (off + 4 > dataEnd) { T2Log(L"[T2] DATA truncated at double array"); return bc; }
+    if (off + 4 > dataEnd) { AmLog(L"[T2] DATA truncated at double array"); return bc; }
     count = static_cast<int32_t>(LE32(data + off)); off += 4;
     if (!safe_advance(count, 8, 1, dataEnd)) return bc;
 
@@ -161,9 +140,9 @@ ByteCode Parse(const uint8_t* data, size_t size) {
             objsOff = 20 + dataSize - 8;  // dataSize includes just the DATA tag
         }
     }
-    T2Log(L"[T2] Trying OBJS at 0x%zX: tag=0x%08X", objsOff, (objsOff+4<=size)?LE32(data+objsOff):0);
+    AmLog(L"[T2] Trying OBJS at 0x%zX: tag=0x%08X", objsOff, (objsOff+4<=size)?LE32(data+objsOff):0);
     if (objsOff + 4 > size || LE32(data + objsOff) != OBJ_TAG) {
-        T2Log(L"[T2] BAD OBJS tag");
+        AmLog(L"[T2] BAD OBJS tag");
         return bc;
     }
     off = objsOff;
@@ -172,9 +151,9 @@ ByteCode Parse(const uint8_t* data, size_t size) {
     uint32_t objsSize = LE32(data + off) - 8; // objsSize includes tag+size
     off += 4;
     size_t objsEnd = off + objsSize;
-    T2Log(L"[T2] OBJS data size=%u objsEnd=%zu", objsSize, objsEnd);
+    AmLog(L"[T2] OBJS data size=%u objsEnd=%zu", objsSize, objsEnd);
     if (objsEnd > size) {
-        T2Log(L"[T2] objsEnd=%zu > size=%zu, adjusting", objsEnd, size);
+        AmLog(L"[T2] objsEnd=%zu > size=%zu, adjusting", objsEnd, size);
         objsEnd = size;
     }
 
@@ -182,14 +161,14 @@ ByteCode Parse(const uint8_t* data, size_t size) {
     // 后面不是 "TJS2" 就说明有计数字段
     if (off + 4 <= objsEnd && LE32(data + off) != FILE_TAG) {
         uint32_t objCount = LE32(data + off);
-        T2Log(L"[T2] Object count field: %u", objCount);
+        AmLog(L"[T2] Object count field: %u", objCount);
         off += 8; // skip count (4 bytes) + reserved (4 bytes)
     }
 
     while (off + 28 <= objsEnd) {
         uint32_t objTag = LE32(data + off);
         if (objTag != FILE_TAG) {
-            T2Log(L"[T2] obj tag not TJS2 at 0x%zX: 0x%08X", off, objTag);
+            AmLog(L"[T2] obj tag not TJS2 at 0x%zX: 0x%08X", off, objTag);
             break;
         }
         off += 4; // tag
@@ -219,7 +198,7 @@ ByteCode Parse(const uint8_t* data, size_t size) {
         if (off + 4 > objsEnd) break;
         int32_t codeCount = static_cast<int32_t>(LE32(data + off));
         off += 4;
-        if (codeCount < 0) { T2Log(L"[T2] Negative codeCount %d", codeCount); break; }
+        if (codeCount < 0) { AmLog(L"[T2] Negative codeCount %d", codeCount); break; }
 
         ByteCode::Context ctx;
         ctx.name = (nameIdx >= 0 && nameIdx < static_cast<int32_t>(strings.size()))
@@ -246,7 +225,7 @@ ByteCode Parse(const uint8_t* data, size_t size) {
         if (off + 4 > objsEnd) break;
         int32_t varCount = static_cast<int32_t>(LE32(data + off));
         off += 4;
-        if (varCount < 0) { T2Log(L"[T2] Negative varCount %d", varCount); break; }
+        if (varCount < 0) { AmLog(L"[T2] Negative varCount %d", varCount); break; }
 
         std::vector<std::pair<int16_t, int16_t>> variants;
         variants.reserve(static_cast<size_t>(varCount));
@@ -285,7 +264,7 @@ ByteCode Parse(const uint8_t* data, size_t size) {
     }
 
     bc.valid = !bc.contexts.empty();
-    T2Log(L"[T2] Parse done: valid=%d contexts=%zu", bc.valid, bc.contexts.size());
+    AmLog(L"[T2] Parse done: valid=%d contexts=%zu", bc.valid, bc.contexts.size());
     return bc;
 }
 

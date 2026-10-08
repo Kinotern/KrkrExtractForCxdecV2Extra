@@ -1,6 +1,7 @@
 ﻿#include "runtime_hook.h"
 #include "tjs_patcher.h"
 #include "kmp_search.h"
+#include "antimalform_log.h"
 #include <cstdio>
 #include <cstdarg>
 #include <vector>
@@ -9,29 +10,6 @@
 #//pragma comment(lib, "detours.lib")
 
 namespace {
-
-static void AmLog(const wchar_t* fmt, ...) {
-    wchar_t buf[512];
-    va_list args;
-    va_start(args, fmt);
-    _vsnwprintf_s(buf, _TRUNCATE, fmt, args);
-    va_end(args);
-    OutputDebugStringW(buf);
-    FILE* f = nullptr;
-    {
-    static wchar_t _logPath[MAX_PATH] = {0};
-    if (!_logPath[0]) {
-        HMODULE _hMod = NULL;
-        GetModuleHandleExW(6, (LPCWSTR)&AmLog, &_hMod); // GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|UNCHANGED_REFCOUNT
-        GetModuleFileNameW(_hMod, _logPath, MAX_PATH);
-        wchar_t* _bs = wcsrchr(_logPath, L'\\');
-        if (_bs) *(_bs+1) = 0;
-        wcscat_s(_logPath, L"CxdecAntiMalform.log");
-    }
-    _wfopen_s(&f, _logPath, L"a");
-}
-    if (f) { fwprintf(f, L"%s\n", buf); fflush(f); fclose(f); }
-}
 
 const uint8_t kHookPattern[] = { 0x55, 0x8B, 0xEC, 0xF6, 0x45, 0x2A, 0x2A, 0x74 };
 const uint8_t kHookMask[]    = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF };

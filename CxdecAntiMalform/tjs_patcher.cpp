@@ -1,32 +1,10 @@
 #include "tjs_patcher.h"
 #include "tjs2_parser.h"
+#include "antimalform_log.h"
 #include <cstring>
 #include <cstdio>
 #include <cstdarg>
 #include <vector>
-
-static void TjsLog(const wchar_t* fmt, ...) {
-    wchar_t buf[512];
-    va_list args;
-    va_start(args, fmt);
-    _vsnwprintf_s(buf, _TRUNCATE, fmt, args);
-    va_end(args);
-    OutputDebugStringW(buf);
-    FILE* f = nullptr;
-    {
-    static wchar_t _logPath[MAX_PATH] = {0};
-    if (!_logPath[0]) {
-        HMODULE _hMod = NULL;
-        GetModuleHandleExW(6, (LPCWSTR)&TjsLog, &_hMod);
-        GetModuleFileNameW(_hMod, _logPath, MAX_PATH);
-        wchar_t* _bs = wcsrchr(_logPath, L'\\');
-        if (_bs) *(_bs+1) = 0;
-        wcscat_s(_logPath, L"CxdecAntiMalform.log");
-    }
-    _wfopen_s(&f, _logPath, L"a");
-}
-    if (f) { fwprintf(f, L"%s\n", buf); fflush(f); fclose(f); }
-}
 
 
 namespace TjsPatcher {
@@ -148,9 +126,9 @@ PatchedData PatchBytecode(const uint8_t* data, size_t size) {
     result.patchesApplied = 0;
 
     Tjs2Parser::ByteCode bc = Tjs2Parser::Parse(data, size);
-    TjsLog(L"[TJS] Parse: valid=%d ctx=%zu", (int)bc.valid, bc.contexts.size());
+    AmLog(L"[TJS] Parse: valid=%d ctx=%zu", (int)bc.valid, bc.contexts.size());
     if (!bc.valid) {
-        TjsLog(L"[TJS] parse FAILED");
+        AmLog(L"[TJS] parse FAILED");
         return result;
     }
 
@@ -198,11 +176,11 @@ PatchedData PatchBytecode(const uint8_t* data, size_t size) {
             wchar_t _dbg[256];
             swprintf_s(_dbg, L"[TJS] PATCH ctx=%hs wordOff=%zu byteOff=0x%zX op %d->%d",
                 ctx.name.c_str(), br.pos, byteOff, (int)br.op, (int)newOp);
-            TjsLog(_dbg);
+            AmLog(_dbg);
         }
     }
 
-    TjsLog(L"[TJS] PatchBytecode done: modified=%d patches=%d",
+    AmLog(L"[TJS] PatchBytecode done: modified=%d patches=%d",
         result.modified, result.patchesApplied);
     return result;
 }

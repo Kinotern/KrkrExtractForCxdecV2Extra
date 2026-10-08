@@ -12,8 +12,17 @@ namespace hxv4::pack_static {
 namespace fs = std::filesystem;
 
 uint16_t default_open_flag(InputMode mode) {
-    // 补丁包用 1、基准包用 0，来自真机包实测
-    return mode == InputMode::Patch ? 1 : 0;
+    // 一律 0，补丁包也 0。
+    //
+    // 这里曾经按"补丁用 1、基准用 0"分模式发标志，来源是一个参考包——那个包靠不住。
+    // 实测（HF 国际版 CafeStella）：标志写 1 时，引擎确实用 nonce1 解开了映射表（能查到
+    // 我们的 record），但**内容层 filter 的种子状态仍然按 open_flag=0 那套推**，于是我们
+    // 按"1"搅出来的密文引擎解不回来 → 图片加载失败、tag 变 void。改回 0、密文按 0 搅，
+    // 同一个包立刻在游戏里正常显示。
+    //
+    // 也就是说：`flags` 的 bit0 只该用来选 nonce，**不能**拿它去改 filter 的推导方向。
+    (void)mode;
+    return 0;
 }
 
 uint32_t next_patch_revision(const std::string& utf8_game_dir) {

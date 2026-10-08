@@ -51,7 +51,8 @@ std::array<uint8_t, 8> domain_bytes(uint64_t value) {
 //
 // 它的 file_hash 用的是**抄下来的常量**，只对这套盐（"xp3hnp"）成立——
 // 占位图的逻辑名我们不知道，没法按盐重算。换了盐这条会不准，
-// 但游戏从来不读条目 0，所以只是复刻比对时的一个已知差异。
+// 但游戏从来不读条目 0。
+// 段表另有一份常数覆盖（见下），那是为了让重封包能与原件逐字节一致。
 PackEntry make_placeholder(const std::array<uint8_t, 8>& domain) {
     PackEntry e0;
     e0.domain_hash = domain;
@@ -61,6 +62,13 @@ PackEntry make_placeholder(const std::array<uint8_t, 8>& domain) {
     e0.raw = true;
     e0.info_flags = 0;
     e0.plaintext.assign(cs::placeholder(), cs::placeholder() + cs::kPlaceholderSize);
+
+    // 条目 0 的段表照抄原包：所有真机包这一条都是 (flags=0, offset=88, orig=157, arch=157)，
+    // 和它自己的 info（910 字节）自相矛盾——是老布局留下的僵尸值，引擎不读它。
+    // 不给这组常数，重封包与原包就会差这 28 字节，逐字节复刻对不上。
+    //
+    // 88 = 头部 40 字节 + 48，位置固定（条目 0 永远是第一个），所以直接写常数。
+    e0.segments_override.push_back(Xp3Segment{0, 88, 157, 157});
     return e0;
 }
 
@@ -273,9 +281,31 @@ bool enumerate_directory(const std::string& utf8_dir, InputMode mode, const Game
         for (const fs::path& f : files) {
             PackEntry e;
             e.domain_hash = root_domain;
-            e.index_name = f.filename().u16string();
-            e.file_hash = hash_for_name(profile, e.index_name);
-            e.key = hx_per_file_key(stats.files + 1);
+
+            // 条目名只能是占位名 U+5000+序号，真名一个字节都不能进 XP3 条目名。
+            //
+            // 引擎按裸名找资源时会走"条目名"这条捷径：条目名是真名就直接命中、并且
+            // 绕开 Hxv4 record，也就拿不到那条记录的 per-file key——读出来的是还带着
+            // filter 的原始字节，图片解码失败、tag 变成 void。所有真包（含官方补丁包）
+            // 的条目名都清一色是 U+5000 起的占位名，就是这个原因。
+            const std::u16string real_name = f.filename().u16string();
+            e.index_name = std::u16string(1, static_cast<char16_t>(0x5000 + (stats.files + 1)));
+            e.file_hash = hash_for_name(profile, real_name);
+
+            // 补丁替换的都是包里已有的文件，能拿到原包那把 key 就用它。
+            //
+            // key 是打包方自由挑的（实测真包之间 0/119 相同），所以自己编一把只是"理论上
+            // 自洽"；而"沿用原包的 key"是唯一被逐字节验证过、引擎一定读得出来的那条路。
+            // 清单在打包目录里（或它的兄弟位置）时才走这条。
+            uint64_t from_manifest = 0;
+            const std::string manifest_key =
+                order_key(bytes_to_upper_hex(root_domain.data(), root_domain.size()),
+                          bytes_to_upper_hex(e.file_hash.data(), e.file_hash.size()));
+            if (manifest_key_for(manifest, manifest_key, from_manifest)) {
+                e.key = from_manifest;
+            } else {
+                e.key = hx_per_file_key(stats.files + 1);
+            }
             e.source_path = f.u8string();
             e.rescramble = rescramble;
             ++stats.files;

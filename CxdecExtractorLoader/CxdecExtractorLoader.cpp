@@ -498,7 +498,7 @@ namespace
         return BrowseFileDialog(owner, title, false, L"游戏主程序", L"*.exe", nullptr, nullptr);
     }
 
-    // 默认落在 <游戏目录>\patch@r<N>.xp3，用户可以直接改。
+    // 默认落在 <游戏目录>\patch.xp3（国际版约定），用户可以直接改。
     std::wstring BrowseSaveXp3File(HWND owner, const wchar_t* title, const std::wstring& defaultPath)
     {
         const std::wstring defaultDirectory = GetParentDirectoryLocal(defaultPath);
@@ -1045,7 +1045,11 @@ namespace
         bool Rescramble;
     };
 
-    // 输出默认名：<游戏目录>\patch@r<N>.xp3，修订号由封包模块扫已有补丁包得出。
+    // 输出默认名：<游戏目录>\patch.xp3。
+    //
+    // 补丁文件名按发行版不同：**国际版（Hikari Field 等）只认 `patch.xp3`**，
+    // 日版那批新框架才要求带修订号的 `patch@r<N>.xp3`（修订号还得压过游戏自己的
+    // build 号，否则引擎当它比本体旧直接跳过）。默认按国际版给，日版手改成 @r<N> 即可。
     std::wstring DefaultPatchOutputPath(const std::wstring& exePath)
     {
         const std::wstring gameDirectory = GetParentDirectoryLocal(exePath);
@@ -1053,19 +1057,7 @@ namespace
         {
             return std::wstring();
         }
-
-        unsigned int revision = 1u;
-        std::wstring loadError;
-        const RepackerApi* api = LoadRepackerApi(loadError);
-        if (api != nullptr && api->NextRevision != nullptr)
-        {
-            revision = api->NextRevision(gameDirectory.c_str());
-            if (revision == 0u)
-            {
-                revision = 1u;
-            }
-        }
-        return FormatString(L"%s\\patch@r%u.xp3", gameDirectory.c_str(), revision);
+        return FormatString(L"%s\\patch.xp3", gameDirectory.c_str());
     }
 
     struct RepackDialogContext
@@ -1329,7 +1321,7 @@ namespace
                 context->StepLabels[2] = MakeStepLabel(136, L"第 3 步 · 输出 XP3（必填）");
                 MakeEdit(kEditX, 133, kEditW, IDC_REPACK_OUTPUT_EDIT);
                 MakeBrowse(132, IDC_REPACK_OUTPUT_BROWSE);
-                MakeHint(163, 2, L"默认写到游戏目录下的 patch@rN.xp3，可以直接改");
+                MakeHint(163, 2, L"默认写到游戏目录下的 patch.xp3；日版那批要改成 patch@rN.xp3");
 
                 // 第 4 步：参数仓库目录，留空走封包模块自己的默认
                 context->StepLabels[3] = MakeStepLabel(196, L"第 4 步 · 参数仓库（可选）");
@@ -1420,7 +1412,7 @@ namespace
                         if (!exe.empty())
                         {
                             ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REPACK_EXE_EDIT), exe.c_str());
-                            // 输出还是空的就顺手填上 patch@rN.xp3
+                            // 输出还是空的就顺手填上默认补丁包名
                             if (GetWindowTextString(::GetDlgItem(hwnd, IDC_REPACK_OUTPUT_EDIT)).empty())
                             {
                                 const std::wstring defaultOutput = DefaultPatchOutputPath(exe);

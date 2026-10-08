@@ -136,12 +136,18 @@ PackReport pack_static(const std::string& utf8_dir, const std::string& utf8_out,
 
     PackStats pack_stats;
     if (!pack_archive_stream(entries, ctx, *sink, pack_stats, r.error)) {
+        // 把落盘层的失败现场（步骤 + 路径 + 错误码）拼进来：
+        // 只写"写入失败"时，磁盘满、目标被占用、跨盘改名都会长得一模一样。
+        const std::string detail = sink->Detail();
+        if (!detail.empty()) r.error += " | " + detail;
         return r;  // sink 析构时会把 .part 删掉
     }
 
     // ---- 6. 收尾：到这一步才把 .part 改名成最终文件 ----
     if (!sink->Finish()) {
         r.error = "写不出文件：" + utf8_out;
+        const std::string detail = sink->Detail();
+        if (!detail.empty()) r.error += " | " + detail;
         return r;
     }
 

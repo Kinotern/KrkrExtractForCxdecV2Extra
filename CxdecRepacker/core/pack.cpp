@@ -6,6 +6,9 @@
 #include "crypto/aead.h"
 #include "crypto/checksum.h"
 
+// 失败现场（错误码 + 路径）复用 Common 里的那套；$(SolutionDir)Common 已在包含路径里。
+#include "win32error.h"
+
 #include <zlib.h>
 
 #include <windows.h>
@@ -18,6 +21,19 @@ namespace hxv4 {
 namespace {
 
 namespace fs = std::filesystem;
+
+// 错误信息统一用 UTF-8 的 std::string（本模块的 err 一直是这个形态）
+std::string ToUtf8(const std::wstring& text) {
+    if (text.empty()) return std::string();
+    const int need = ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(),
+                                           static_cast<int>(text.size()), nullptr, 0, nullptr,
+                                           nullptr);
+    if (need <= 0) return std::string();
+    std::string out(static_cast<size_t>(need), '\0');
+    ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), &out[0], need,
+                          nullptr, nullptr);
+    return out;
+}
 
 void put32(std::vector<uint8_t>& out, uint32_t v) {
     for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));
@@ -146,6 +162,9 @@ public:
     FileSink(fs::path final_path, fs::path part_path)
         : final_(std::move(final_path)), part_(std::move(part_path)) {
         file_.open(part_, std::ios::binary | std::ios::out | std::ios::trunc);
+        if (!file_.is_open()) {
+            Note(L"打开临时文件", part_);
+        }
     }
 
     ~FileSink() override {
@@ -158,10 +177,18 @@ public:
 
     bool Ok() const { return file_.is_open(); }
 
+    std::string Detail() const override { return detail_; }
+
     bool Write(const uint8_t* data, size_t len) override {
-        if (!file_.is_open()) return false;
+        if (!file_.is_open()) {
+            if (detail_.empty()) Note(L"写入时文件已关闭", part_);
+            return false;
+        }
         file_.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(len));
-        if (!file_) return false;
+        if (!file_) {
+            Note(L"写数据", part_);
+            return false;
+        }
         cursor_ += len;
         return true;
     }
@@ -172,6 +199,9 @@ public:
         file_.seekp(static_cast<std::streamoff>(offset), std::ios::beg);
         file_.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(len));
         const bool ok = static_cast<bool>(file_);
+        if (!ok) {
+            Note(L"回填索引偏移", part_);
+        }
         // 回填本来就在最后一步，但别赌调用顺序
         if (here != std::streampos(-1)) file_.seekp(here);
         return ok;
@@ -180,13 +210,22 @@ public:
     uint64_t Tell() const override { return cursor_; }
 
     bool Finish() override {
-        if (!file_.is_open()) return false;
+        if (!file_.is_open()) {
+            if (detail_.empty()) Note(L"收尾时文件已关闭", part_);
+            return false;
+        }
         file_.flush();
-        if (!file_) return false;
+        if (!file_) {
+            Note(L"落盘 flush", part_);
+            return false;
+        }
         file_.close();
         // 目标可能已经存在（重封同名补丁包），要允许覆盖
         if (::MoveFileExW(part_.wstring().c_str(), final_.wstring().c_str(),
                           MOVEFILE_REPLACE_EXISTING) == FALSE) {
+            // 最要命的一步：.part 已经写完，用户却拿不到成品。
+            // 必须留下错误码（目标被占用？跨盘？权限？）
+            Note(L"MoveFileEx 改名到最终文件", final_);
             return false;
         }
         committed_ = true;
@@ -194,11 +233,18 @@ public:
     }
 
 private:
+    // 只记第一次失败：后面的多半是同一个原因（磁盘满、盘掉线），重复记没意义。
+    void Note(const wchar_t* what, const fs::path& path) {
+        if (!detail_.empty()) return;
+        detail_ = ToUtf8(Win32Error::FailureLine(what, path.wstring(), Win32Error::CaptureBoth()));
+    }
+
     fs::path final_;
     fs::path part_;
     std::fstream file_;
     uint64_t cursor_ = 0;
     bool committed_ = false;
+    std::string detail_;
 };
 
 }  // namespace

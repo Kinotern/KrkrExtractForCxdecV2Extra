@@ -58,6 +58,9 @@ struct ArchiveSink {
     virtual uint64_t Tell() const = 0;
     // 收尾。文件 sink 在这里才把 .part 改名成最终文件。
     virtual bool Finish() { return true; }
+    // 失败原因（可选，给人看的）。落盘 sink 会把 errno / Win32 错误码记在这里，
+    // 上层拼进自己的错误信息里 —— 否则"写不出文件"这几个字等于没说。
+    virtual std::string Detail() const { return std::string(); }
 };
 
 // 落盘用的 sink。写的是 <path>.part，Finish() 成功才改名过去——

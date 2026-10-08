@@ -22,7 +22,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # 发布用：只出成品，剥掉链接副产物，供下载与发版。
+  release:
+    name: Release x86
     # .sln 是 VS17（17.6），17 个项目统一 v143 工具集，windows-2022 镜像与之匹配。
     # 本地若只装了更新的工具集（如 v145），需要 /p:PlatformToolset=vXXX 覆盖，CI 上不需要。
     runs-on: windows-2022
@@ -84,3 +86,71 @@ jobs:
           gh release create "${{ github.ref_name }}" `
             "KrkrExtractForCxdecV2-${{ github.ref_name }}.zip" `
             --title "${{ github.ref_name }}" --generate-notes
+
+  # 排查用：保留编译中间产物（.pdb/.lib/.exp），不打 tag 也不发版。
+  debug:
+    name: Debug x86（含中间产物）
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v3
+
+      - name: Build Debug x86
+        shell: pwsh
+        run: |
+          $params = @(
+            'KrkrZCxdecV2.sln',
+            '/p:Configuration=Debug',
+            '/p:Platform=x86',
+            '/m', '/v:minimal', '/nologo'
+          )
+          if ('${{ inputs.toolset }}' -ne '') {
+            $params += "/p:PlatformToolset=${{ inputs.toolset }}"
+          }
+          msbuild @params
+
+      # CxdecAntiMalform 只有 Release 配置（解决方案里没有 Debug|Win32 对应项，
+      # Debug 构建会跳过它）。它是注入游戏的那个 DLL，少了 Debug 包就跑不起来，
+      # 所以单独用 Release 编一份拷进来。根因是项目文件缺 Debug 配置，不在 CI 里改。
+      - name: Build AntiMalform in Release
+        shell: pwsh
+        run: |
+          $params = @(
+            'CxdecAntiMalform\CxdecAntiMalform.vcxproj',
+            '/p:Configuration=Release',
+            '/p:Platform=x86',
+            '/m', '/v:minimal', '/nologo'
+          )
+          if ('${{ inputs.toolset }}' -ne '') {
+            $params += "/p:PlatformToolset=${{ inputs.toolset }}"
+          }
+          msbuild @params
+
+      # 多数项目的 Debug OutDir 是 Debug\ 根，而 Loader 找的是
+      # <自身目录>\CxdecExtractordll\*.dll。把 DLL 与配套 .pdb 收进子目录，
+      # exe 留在根；.lib/.exp 这些构建副产物留在原处（本包就是要带上它们）。
+      - name: Assemble Debug package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'Debug\CxdecExtractordll' | Out-Null
+          Get-ChildItem Debug -File -Recurse -Include *.dll, *.pdb |
+            Where-Object { $_.DirectoryName -notlike '*CxdecExtractordll*' } |
+            Move-Item -Destination 'Debug\CxdecExtractordll' -Force
+          Copy-Item 'Release\CxdecExtractordll\CxdecAntiMalform.dll' 'Debug\CxdecExtractordll\' -Force
+
+      - name: List output
+        shell: pwsh
+        run: |
+          Get-ChildItem Debug -Recurse -File |
+            ForEach-Object { "{0,10:N0}  {1}" -f $_.Length, $_.FullName.Substring($PWD.Path.Length + 1) }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: KrkrExtractForCxdecV2-${{ github.sha }}-debug
+          path: Debug/**
+          if-no-files-found: error

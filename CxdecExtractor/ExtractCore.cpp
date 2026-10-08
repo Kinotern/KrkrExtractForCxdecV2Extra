@@ -161,6 +161,8 @@ namespace Engine
             this->WriteLog(L"[env] %s", line.c_str());
         }
 
+        this->mFailures.Reset();
+
         // 日志本身打不开是"现场全丢"级别的故障：必须让上层看得见，
         // 否则用户报"日志是空的"时，我们分不清是没出事还是日志没开成。
         if (!this->mLogger.IsOpen())
@@ -238,6 +240,8 @@ namespace Engine
             else
             {
                 currentSucceeded = false;
+                ++this->mFailures.openStream;
+                this->mFailures.AddSample(L"打不开资源流 " + relativePath);
                 this->WriteLog(L"File Not Exist: %s", relativePath.c_str());
             }
 
@@ -278,7 +282,25 @@ namespace Engine
         else
         {
             this->WriteLog(L"Extract Completed With Errors: %s", packageDisplayName.c_str());
-            this->NotifyProgress(taskId, packagePath, ExtractTaskFailed, totalCount, totalCount, L"解包完成，但存在失败条目");
+
+            // 收尾汇总：一次解包可能上千条失败、日志上百万字节，这一行比让人翻日志有用。
+            const FailureTally& tally = this->mFailures;
+            this->WriteLog(L"Failure summary: dir-create=%u open-stream=%u write-open=%u "
+                           L"write-data=%u invalid=%u",
+                           tally.dirCreate, tally.openStream, tally.writeOpen, tally.writeData,
+                           tally.invalid);
+            for (const std::wstring& sample : tally.samples)
+            {
+                this->WriteLog(L"  sample: %s", sample.c_str());
+            }
+
+            // UI 列表里也给出首条原因：用户贴图/口述时带上它，就能直接判断方向。
+            std::wstring detail = L"解包完成，但存在失败条目";
+            if (!tally.samples.empty())
+            {
+                detail += L"（首条：" + tally.samples.front() + L"）";
+            }
+            this->NotifyProgress(taskId, packagePath, ExtractTaskFailed, totalCount, totalCount, detail);
         }
 
         return allSucceeded;
@@ -407,8 +429,10 @@ namespace Engine
             {
                 // 这一步以前完全被忽略：建目录失败会一路走到下面报成"Write Error"，
                 // 把"目录建不出来"伪装成"写文件失败"，用户机器上根本看不出是哪一步。
-                this->WriteLog(L"Dir Create Failed: %s | %s", relativePath.c_str(),
-                               Win32Error::FailureLine(L"CreateDirectory", outputDir, dirError).c_str());
+                const std::wstring reason = Win32Error::FailureLine(L"CreateDirectory", outputDir, dirError);
+                ++this->mFailures.dirCreate;
+                this->mFailures.AddSample(L"建目录失败 " + relativePath + L" | " + reason);
+                this->WriteLog(L"Dir Create Failed: %s | %s", relativePath.c_str(), reason.c_str());
                 return false;
             }
         }
@@ -445,14 +469,27 @@ namespace Engine
 
             // 失败在哪一步（打开 / 写入 / 落盘 flush / 关闭）连同错误码一起记下来，
             // 只写一句"Write Error"时，这几种情况在日志里长得一模一样。
+            const std::wstring reason = Win32Error::FailureLine(L"WriteAllBytes", extractPath, writeError);
+            if (stage == File::WriteStage::Open)
+            {
+                ++this->mFailures.writeOpen;
+            }
+            else
+            {
+                ++this->mFailures.writeData;
+            }
+            this->mFailures.AddSample(L"写失败(" + std::wstring(File::WriteStageName(stage)) + L") " +
+                                      relativePath + L" | " + reason);
+
             this->WriteLog(L"Write Failed: %s | stage=%s | %zu 字节 | %s",
                            relativePath.c_str(),
                            File::WriteStageName(stage),
                            buffer.size(),
-                           Win32Error::FailureLine(L"WriteAllBytes", extractPath, writeError).c_str());
+                           reason.c_str());
 		}
 		else
 		{
+            ++this->mFailures.invalid;
             this->WriteLog(L"Invaild File: %s", relativePath.c_str());
 		}
 

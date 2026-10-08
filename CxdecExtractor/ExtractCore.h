@@ -82,6 +82,42 @@ namespace Engine
         tExtractProgressCallback mProgressCallback; //进度回调
         void* mProgressContext;                //进度回调上下文
 
+        // 本次任务的失败分类统计。
+        //
+        // 一次解包可能上千条、日志上百万字节；需要的是"哪一类失败、第一条为什么失败"，
+        // 而不是从头翻。收尾时汇总一次，并把首个原因带进 UI 列表。
+        struct FailureTally
+        {
+            unsigned int dirCreate = 0;
+            unsigned int openStream = 0;
+            unsigned int writeOpen = 0;
+            unsigned int writeData = 0;   // 写入 / 落盘(flush) / 关闭
+            unsigned int invalid = 0;
+            std::vector<std::wstring> samples;   // 前几条的完整原因
+
+            unsigned int Total() const
+            {
+                return dirCreate + openStream + writeOpen + writeData + invalid;
+            }
+
+            void Reset()
+            {
+                *this = FailureTally{};
+            }
+
+            void AddSample(const std::wstring& line)
+            {
+                // 只留前几条：目的是让人一眼看到"典型原因"，不是把整份日志搬过来
+                static constexpr size_t kMaxSamples = 5u;
+                if (samples.size() < kMaxSamples)
+                {
+                    samples.push_back(line);
+                }
+            }
+        };
+
+        FailureTally mFailures;
+
 	public:
 		ExtractCore();
 		ExtractCore(const ExtractCore&) = delete;

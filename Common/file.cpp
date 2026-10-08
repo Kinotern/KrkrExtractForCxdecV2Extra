@@ -220,48 +220,85 @@ namespace File
 		return false;
 	}
 
+	const wchar_t* WriteStageName(WriteStage stage)
+	{
+		switch (stage)
+		{
+			case WriteStage::Open: return L"Open";
+			case WriteStage::Arg: return L"Arg";
+			case WriteStage::Write: return L"Write";
+			case WriteStage::Flush: return L"Flush";
+			case WriteStage::Close: return L"Close";
+			default: return L"None";
+		}
+	}
+
 	bool WriteAllBytes(const std::wstring& path, const void* buffer, size_t size)
 	{
-		FILE* fp;
+		return WriteAllBytes(path, buffer, size, nullptr, nullptr);
+	}
 
-		if (_wfopen_s(&fp, path.c_str(), L"wb") != 0)
+	bool WriteAllBytes(const std::wstring& path, const void* buffer, size_t size,
+	                   WriteStage* stage, Win32Error::Info* error)
+	{
+		if (stage != nullptr)
 		{
-			goto error;
+			*stage = WriteStage::None;
 		}
 
-		if (fp == nullptr)
+		// 错误码在失败那一刻就取：作为实参求值，保证"失败的那次调用"之后
+		// 没有别的 API 插进来把 GetLastError / errno 冲掉。
+		const auto record = [&](WriteStage s, DWORD win32Code, int crtCode) {
+			if (stage != nullptr)
+			{
+				*stage = s;
+			}
+			if (error == nullptr)
+			{
+				return;
+			}
+			error->code = win32Code;
+			error->crtErrno = crtCode;
+			error->message = Win32Error::DescribeCode(win32Code);
+		};
+
+		FILE* fp = nullptr;
+		if (_wfopen_s(&fp, path.c_str(), L"wb") != 0 || fp == nullptr)
 		{
-			goto error;
+			record(WriteStage::Open, ::GetLastError(), errno);
+			return false;
 		}
 
-		if (buffer == nullptr)
+		if (buffer == nullptr || size == 0)
 		{
-			goto error;
-		}
-
-		if (size == 0)
-		{
-			goto error;
+			record(WriteStage::Arg, ERROR_INVALID_PARAMETER, EINVAL);
+			fclose(fp);
+			return false;
 		}
 
 		if (fwrite(buffer, size, 1, fp) != 1)
 		{
-			goto error;
+			record(WriteStage::Write, ::GetLastError(), errno);
+			fclose(fp);
+			return false;
 		}
 
-		fflush(fp);
+		// 这一段以前被完全忽略：磁盘写满时数据其实已经丢了，函数却返回成功，
+		// 外面看到的就是"解包说成功、文件却不对"。
+		if (fflush(fp) != 0)
+		{
+			record(WriteStage::Flush, ::GetLastError(), errno);
+			fclose(fp);
+			return false;
+		}
 
-		fclose(fp);
+		if (fclose(fp) != 0)
+		{
+			record(WriteStage::Close, ::GetLastError(), errno);
+			return false;
+		}
 
 		return true;
-
-	error:
-		if (fp)
-		{
-			fclose(fp);
-		}
-
-		return false;
 	}
 
 	void Delete(const std::string& path)
@@ -271,6 +308,26 @@ namespace File
 
 	void Delete(const std::wstring& path)
 	{
-		_wremove(path.c_str());
+		Delete(path, nullptr);
+	}
+
+	bool Delete(const std::wstring& path, Win32Error::Info* error)
+	{
+		if (_wremove(path.c_str()) == 0)
+		{
+			return true;
+		}
+
+		// 本来就不在，按成功处理：调用方多半是"先删旧的再写新的"
+		if (errno == ENOENT)
+		{
+			return true;
+		}
+
+		if (error != nullptr)
+		{
+			*error = Win32Error::CaptureCrt();
+		}
+		return false;
 	}
 }

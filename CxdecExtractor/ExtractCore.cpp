@@ -2,6 +2,7 @@
 #include "pe.h"
 #include "file.h"
 #include "directory.h"
+#include "diag.h"
 #include "path.h"
 #include "stringhelper.h"
 #include "ExtendUtils.h"
@@ -139,7 +140,33 @@ namespace Engine
 		}
 
         const std::wstring effectiveOutputDirectory = outputDirectory.empty() ? this->mExtractDirectoryPath : outputDirectory;
-        Directory::Create(effectiveOutputDirectory);
+
+        // 输出目录建不出来时，后面每个文件都会失败，所以这一步必须单独报，
+        // 而且要把错误码留下 —— 权限不足 / 路径过长 / 磁盘满在这里就能分开。
+        Win32Error::Info createError;
+        if (!Directory::Create(effectiveOutputDirectory, &createError))
+        {
+            const std::wstring failure =
+                Win32Error::FailureLine(L"CreateDirectory", effectiveOutputDirectory, createError);
+            this->WriteLog(L"Extract Failed: %s | %s", packageDisplayName.c_str(), failure.c_str());
+            this->NotifyProgress(taskId, packagePath, ExtractTaskFailed, 0u, 0u, failure);
+            return false;
+        }
+
+        // 每个任务记一份环境快照：路径长度、盘符类型、剩余空间、能不能写、
+        // 系统有没有开长路径支持。以前这些只能靠问用户，现在日志里直接有。
+        for (const std::wstring& line : Diag::SnapshotLines(effectiveOutputDirectory))
+        {
+            this->WriteLog(L"[env] %s", line.c_str());
+        }
+
+        // 日志本身打不开是"现场全丢"级别的故障：必须让上层看得见，
+        // 否则用户报"日志是空的"时，我们分不清是没出事还是日志没开成。
+        if (!this->mLogger.IsOpen())
+        {
+            const std::wstring detail = L"解包日志不可用：" + Win32Error::Describe(this->mLogger.LastOpenError());
+            this->NotifyProgress(taskId, packagePath, ExtractTaskPreparing, 0u, 0u, detail);
+        }
 
         // .alst 保存“目录哈希 / 文件哈希”映射，便于后续结合 hash 日志回填路径。
         std::wstring packageName = Path::GetFileNameWithoutExtension(packageDisplayName);
@@ -149,8 +176,21 @@ namespace Engine
         this->NotifyProgress(taskId, packagePath, ExtractTaskIndexLoaded, 0u, (unsigned int)entries.size(), L"索引读取完成");
         this->WriteLog(L"Extract Start: %s -> %s", packageDisplayName.c_str(), extractOutput.c_str());
 
-        File::Delete(fileTableOutput);
+        Win32Error::Info deleteError;
+        if (!File::Delete(fileTableOutput, &deleteError))
+        {
+            // 删不掉就是"往旧清单上追加"，后面回填路径会读到上一次的残留
+            this->WriteLog(L"File Table Delete Failed: %s | %s", fileTableOutput.c_str(),
+                           Win32Error::FailureLine(L"DeleteFile", fileTableOutput, deleteError).c_str());
+        }
         Log::Logger fileTable = Log::Logger(fileTableOutput.c_str());
+
+        // 清单就写在输出目录里，打不开的话这一趟没有任何映射记录可查，必须显式报出来
+        if (!fileTable.IsOpen())
+        {
+            this->WriteLog(L"File Table Unavailable: %s | %s", fileTableOutput.c_str(),
+                           Win32Error::Describe(fileTable.LastOpenError()).c_str());
+        }
 
         WORD bom = 0xFEFF;
         fileTable.WriteData(&bom, sizeof(bom));
@@ -361,7 +401,15 @@ namespace Engine
         std::wstring outputDir = Path::GetDirectoryName(extractPath);
         if (!outputDir.empty())
         {
-            Directory::Create(outputDir.c_str());
+            Win32Error::Info dirError;
+            if (!Directory::Create(outputDir, &dirError))
+            {
+                // 这一步以前完全被忽略：建目录失败会一路走到下面报成"Write Error"，
+                // 把"目录建不出来"伪装成"写文件失败"，用户机器上根本看不出是哪一步。
+                this->WriteLog(L"Dir Create Failed: %s | %s", relativePath.c_str(),
+                               Win32Error::FailureLine(L"CreateDirectory", outputDir, dirError).c_str());
+                return false;
+            }
         }
 
 		std::vector<uint8_t> buffer;
@@ -385,14 +433,22 @@ namespace Engine
 
 		if (success && !buffer.empty())
 		{
-			if (File::WriteAllBytes(extractPath, buffer.data(), buffer.size()))
+            File::WriteStage stage = File::WriteStage::None;
+            Win32Error::Info writeError;
+			if (File::WriteAllBytes(extractPath, buffer.data(), buffer.size(), &stage, &writeError))
 			{
                 this->WriteLog(L"Extract Successed: %s", relativePath.c_str());
                 stream->Seek(LARGE_INTEGER{ }, STREAM_SEEK_SET, nullptr);
                 return true;
 			}
 
-            this->WriteLog(L"Write Error: %s", relativePath.c_str());
+            // 失败在哪一步（打开 / 写入 / 落盘 flush / 关闭）连同错误码一起记下来，
+            // 只写一句"Write Error"时，这几种情况在日志里长得一模一样。
+            this->WriteLog(L"Write Failed: %s | stage=%s | %zu 字节 | %s",
+                           relativePath.c_str(),
+                           File::WriteStageName(stage),
+                           buffer.size(),
+                           Win32Error::FailureLine(L"WriteAllBytes", extractPath, writeError).c_str());
 		}
 		else
 		{

@@ -28,7 +28,27 @@ namespace Log
 	{
 		EnterCriticalSection(&m_Lock);
 		m_pOutput = _wfsopen(lpFileName, L"ab", _SH_DENYWR);
+		if (m_pOutput == nullptr)
+		{
+			// 打不开就是**整场日志静默丢弃**，必须留下原因：
+			// 否则用户报"日志是空的"时，我们分不清是没出事还是日志没开成。
+			m_OpenError = Win32Error::CaptureBoth();
+		}
+		else
+		{
+			m_OpenError = Win32Error::Info{};
+		}
 		LeaveCriticalSection(&m_Lock);
+	}
+
+	void Logger::NoteWriteFailure()
+	{
+		// 只记第一次：后面的失败多半是同一个原因，刷屏没有意义
+		if (!m_WriteFailed)
+		{
+			m_WriteFailed = true;
+			m_WriteError = Win32Error::CaptureBoth();
+		}
 	}
 
 	void Logger::Close()
@@ -84,8 +104,14 @@ namespace Log
 		EnterCriticalSection(&m_Lock);
 		if (m_pOutput)
 		{
-			fwrite(output.data(), output.length(), 1, m_pOutput);
-			fflush(m_pOutput);
+			if (fwrite(output.data(), output.length(), 1, m_pOutput) != 1)
+			{
+				NoteWriteFailure();
+			}
+			else if (fflush(m_pOutput) != 0)
+			{
+				NoteWriteFailure();
+			}
 		}
 		LeaveCriticalSection(&m_Lock);
 	}
@@ -107,8 +133,14 @@ namespace Log
 		EnterCriticalSection(&m_Lock);
 		if (m_pOutput)
 		{
-			fwrite(output.data(), output.length(), 1, m_pOutput);
-			fflush(m_pOutput);
+			if (fwrite(output.data(), output.length(), 1, m_pOutput) != 1)
+			{
+				NoteWriteFailure();
+			}
+			else if (fflush(m_pOutput) != 0)
+			{
+				NoteWriteFailure();
+			}
 		}
 		LeaveCriticalSection(&m_Lock);
 	}
@@ -126,8 +158,14 @@ namespace Log
 		EnterCriticalSection(&m_Lock);
 		if (m_pOutput)
 		{
-			fwrite(output.data(), output.length(), 1, m_pOutput);
-			fflush(m_pOutput);
+			if (fwrite(output.data(), output.length(), 1, m_pOutput) != 1)
+			{
+				NoteWriteFailure();
+			}
+			else if (fflush(m_pOutput) != 0)
+			{
+				NoteWriteFailure();
+			}
 		}
 		LeaveCriticalSection(&m_Lock);
 	}
@@ -148,8 +186,14 @@ namespace Log
 		EnterCriticalSection(&m_Lock);
 		if (m_pOutput)
 		{
-			fwrite(output.data(), output.length(), 1, m_pOutput);
-			fflush(m_pOutput);
+			if (fwrite(output.data(), output.length(), 1, m_pOutput) != 1)
+			{
+				NoteWriteFailure();
+			}
+			else if (fflush(m_pOutput) != 0)
+			{
+				NoteWriteFailure();
+			}
 		}
 		LeaveCriticalSection(&m_Lock);
 	}
@@ -165,8 +209,14 @@ namespace Log
 		EnterCriticalSection(&m_Lock);
 		if (m_pOutput)
 		{
-			fwrite(content.data(), content.length() * 2, 1, m_pOutput);
-			fflush(m_pOutput);
+			if (fwrite(content.data(), content.length() * 2, 1, m_pOutput) != 1)
+			{
+				NoteWriteFailure();
+			}
+			else if (fflush(m_pOutput) != 0)
+			{
+				NoteWriteFailure();
+			}
 		}
 		LeaveCriticalSection(&m_Lock);
 	}
@@ -176,8 +226,14 @@ namespace Log
 		EnterCriticalSection(&m_Lock);
 		if (m_pOutput)
 		{
-			fwrite(data, size, 1, m_pOutput);
-			fflush(m_pOutput);
+			if (fwrite(data, size, 1, m_pOutput) != 1)
+			{
+				NoteWriteFailure();
+			}
+			else if (fflush(m_pOutput) != 0)
+			{
+				NoteWriteFailure();
+			}
 		}
 		LeaveCriticalSection(&m_Lock);
 	}
